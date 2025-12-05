@@ -21,8 +21,10 @@ import java.util.*
 fun MainScreen(
     viewModel: PresenceViewModel,
     onNavigateStats: () -> Unit,
-    onNavigateWorkLocation: () -> Unit   // ⬅️ Ajout OK
-) {
+    onNavigateWorkLocation: () -> Unit,
+    onNavigateSettings: () -> Unit
+){
+
     val presences by viewModel.allPresences.collectAsState()
     val clock = remember { mutableStateOf(System.currentTimeMillis()) }
 
@@ -107,16 +109,26 @@ fun MainScreen(
             ) {
 
                 Button(onClick = {
-                    viewModel.addPresence("ENTREE", selectedLocation)
+                    viewModel.manualEvent("ENTREE") { success, message ->
+                        // afficher le message dans un Toast ou Snackbar
+                    }
+
                 }) {
                     Text("Entrée")
                 }
+                Button(onClick = onNavigateSettings) {
+                    Text("Configuration")
+                }
 
                 Button(onClick = {
-                    viewModel.addPresence("SORTIE", selectedLocation)
+                    viewModel.manualEvent("SORTIE") { success, message ->
+                        // ...
+                    }
+
                 }) {
                     Text("Sortie")
                 }
+
             }
 
             Spacer(modifier = Modifier.height(24.dp))

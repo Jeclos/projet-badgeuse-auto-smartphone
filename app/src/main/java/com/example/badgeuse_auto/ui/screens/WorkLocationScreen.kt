@@ -10,10 +10,17 @@ import androidx.compose.ui.unit.dp
 import com.example.badgeuse_auto.data.WorkLocationEntity
 import com.example.badgeuse_auto.data.PresenceViewModel
 import com.google.android.gms.location.LocationServices
-import kotlinx.coroutines.launch                            // <-- IMPORTANT
-import androidx.compose.runtime.rememberCoroutineScope      // <-- IMPORTANT
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+
 
 @SuppressLint("MissingPermission")
 @Composable
@@ -29,7 +36,7 @@ fun WorkLocationScreen(
     var latitude by remember { mutableStateOf("") }
     var longitude by remember { mutableStateOf("") }
 
-    // Charger automatiquement le lieu existant
+    // Charger automatiquement le lieu existant au démarrage du composable
     LaunchedEffect(Unit) {
         val saved = viewModel.refreshWorkLocation()
         if (saved != null) {
@@ -57,7 +64,7 @@ fun WorkLocationScreen(
             value = name,
             onValueChange = { name = it },
             label = { Text("Nom du lieu", color = Color.Black) },
-            textStyle = LocalTextStyle.current.copy(color = Color.Black),
+            textStyle = TextStyle(color = Color.Black),
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -67,7 +74,7 @@ fun WorkLocationScreen(
             value = latitude,
             onValueChange = { latitude = it },
             label = { Text("Latitude", color = Color.Black) },
-            textStyle = LocalTextStyle.current.copy(color = Color.Black),
+            textStyle = TextStyle(color = Color.Black),
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -77,16 +84,13 @@ fun WorkLocationScreen(
             value = longitude,
             onValueChange = { longitude = it },
             label = { Text("Longitude", color = Color.Black) },
-            textStyle = LocalTextStyle.current.copy(color = Color.Black),
+            textStyle = TextStyle(color = Color.Black),
             modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(Modifier.height(20.dp))
 
-
-        // ----------------------------------------------------------------------
-        // ⭐ Bouton Utiliser ma localisation actuelle
-        // ----------------------------------------------------------------------
+        // Utiliser la localisation actuelle
         Button(
             onClick = {
                 val client = LocationServices.getFusedLocationProviderClient(context)
@@ -104,13 +108,12 @@ fun WorkLocationScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // ----------------------------------------------------------------------
-        // ⭐ Bouton ENREGISTRER
-        // ----------------------------------------------------------------------
+        // ENREGISTRER
         Button(
             onClick = {
                 if (name.isNotEmpty() && latitude.isNotEmpty() && longitude.isNotEmpty()) {
                     scope.launch {
+                        // appel suspend via coroutine
                         viewModel.saveWorkLocation(
                             WorkLocationEntity(
                                 name = name,
@@ -130,9 +133,7 @@ fun WorkLocationScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        // ----------------------------------------------------------------------
-        // ⭐ Bouton RETOUR
-        // ----------------------------------------------------------------------
+        // RETOUR
         OutlinedButton(
             onClick = { onBack() },
             modifier = Modifier.fillMaxWidth()

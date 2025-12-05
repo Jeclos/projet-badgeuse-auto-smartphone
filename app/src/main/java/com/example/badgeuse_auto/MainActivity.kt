@@ -28,50 +28,62 @@ class MainActivity : ComponentActivity() {
     )
 
     private val requestCode = 1001
-    private lateinit var viewModel: PresenceViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Permissions
         requestPermissions(locationPermissions, requestCode)
 
-        // Init database + viewmodel
+        // --- DATABASES ---
         val db = PresenceDatabase.getDatabase(this)
-        val repo = PresenceRepository(
+        val settingsDb = SettingsDatabase.getDatabase(this)
+
+        // --- REPOSITORIES ---
+        val presenceRepo = PresenceRepository(
             presenceDao = db.presenceDao(),
-            workLocationDao = db.workLocationDao()
+            workLocationDao = db.workLocationDao(),
+            dailySummaryDao = db.dailySummaryDao(),
+            settingsDao = settingsDb.settingsDao()
         )
-        val factory = PresenceViewModelFactory(repo)
-        viewModel = factory.create(PresenceViewModel::class.java)
+        val settingsRepo = SettingsRepository(settingsDb.settingsDao())
+
+        // --- VIEWMODELS ---
+        val presenceViewModel =
+            PresenceViewModelFactory(presenceRepo).create(PresenceViewModel::class.java)
+
+        val settingsViewModel =
+            SettingsViewModelFactory(settingsRepo).create(SettingsViewModel::class.java)
 
         enableEdgeToEdge()
 
-        // UI
+        // --- UI ROOT ---
         setContent {
             Badgeuse_AutoTheme {
                 RootNav(
-                    viewModel = viewModel,
-                    onGeofenceUpdate = { updateGeofence() }   // ⬅️ TRÈS IMPORTANT
+                    presenceViewModel = presenceViewModel,
+                    settingsViewModel = settingsViewModel,
+                    onGeofenceUpdate = {
+                        updateGeofence(presenceViewModel)
+                    }
                 )
             }
         }
 
-        // Au démarrage → créer geofence si un lieu existe
+        // Création geofence au démarrage
         lifecycleScope.launch {
-            val loc = viewModel.getWorkLocation()
+            val loc = presenceViewModel.getWorkLocation()
             if (loc != null) {
                 registerWorkGeofence(loc.latitude, loc.longitude)
             }
         }
     }
 
-    // -------------------------------------------------------------------------
-    //  Met à jour le geofence quand un lieu est modifié
-    // -------------------------------------------------------------------------
-    fun updateGeofence() {
+    // -------------------------------------------------------------
+    // METTRE À JOUR LE GEOFENCE
+    // -------------------------------------------------------------
+    private fun updateGeofence(vm: PresenceViewModel) {
         lifecycleScope.launch {
-            val loc = viewModel.getWorkLocation()
+            val loc = vm.getWorkLocation()
             if (loc != null) {
                 registerWorkGeofence(loc.latitude, loc.longitude)
             } else {
@@ -80,9 +92,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // -------------------------------------------------------------------------
-    //  Création du geofence pour un lieu donné
-    // -------------------------------------------------------------------------
+    // -------------------------------------------------------------
+    // ENREGISTRER LE GEOFENCE
+    // -------------------------------------------------------------
     private suspend fun registerWorkGeofence(latitude: Double, longitude: Double) {
 
         if (ActivityCompat.checkSelfPermission(
@@ -93,8 +105,6 @@ class MainActivity : ComponentActivity() {
             Log.e("GEOFENCE", "Permissions manquantes")
             return
         }
-
-        Log.d("GEOFENCE", "📍 Création du geofence : $latitude / $longitude")
 
         val geofencingClient = LocationServices.getGeofencingClient(this)
 
@@ -122,11 +132,5 @@ class MainActivity : ComponentActivity() {
         )
 
         geofencingClient.addGeofences(request, pendingIntent)
-            .addOnSuccessListener {
-                Log.d("GEOFENCE", "✔️ Geofence WORK_ZONE enregistré")
-            }
-            .addOnFailureListener {
-                Log.e("GEOFENCE", "❌ Erreur geofence : ${it.message}")
-            }
     }
 }

@@ -2,72 +2,174 @@ package com.example.badgeuse_auto.data
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.map
-import java.util.*
+import kotlinx.coroutines.withContext
+import java.util.Calendar
+
 class PresenceViewModel(private val repository: PresenceRepository) : ViewModel() {
 
+    // --------------------------------------------------------------------
+    // PRESENCES FLOW
+    // --------------------------------------------------------------------
     val allPresences: StateFlow<List<PresenceEntry>> =
         repository.allPresences
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addPresence(type: String, locationName: String) {
-        val entry = PresenceEntry(
-            timestamp = System.currentTimeMillis(),
-            type = type,
-            locationName = locationName
-        )
-        viewModelScope.launch {
-            repository.addPresence(entry)
+
+    // --------------------------------------------------------------------
+    // DAILY SUMMARY FLOW
+    // --------------------------------------------------------------------
+    val allDailySummaries: StateFlow<List<DailyWorkSummary>> =
+        repository.getAllSummaries()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+
+    fun summariesBetween(from: Long, to: Long): Flow<List<DailyWorkSummary>> {
+        return repository.getSummariesBetween(from, to)
+    }
+
+    suspend fun loadSummariesBetween(from: Long, to: Long): List<DailyWorkSummary> {
+        return repository.getSummariesBetweenList(from, to)
+    }
+
+
+    // --------------------------------------------------------------------
+    // SETTINGS FLOW (AJOUTÉ)
+    // --------------------------------------------------------------------
+    val settings: StateFlow<SettingsEntity> =
+        repository.getSettingsFlow()
+            .map { it ?: SettingsEntity() }   // <-- convertit en non-nullable
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                SettingsEntity()              // valeur initiale
+            )
+
+
+    // --------------------------------------------------------------------
+    // MANUAL EVENT (boutons Entrée / Sortie)
+    // --------------------------------------------------------------------
+    fun manualEvent(type: String, callback: (Boolean, String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = performRecordIfAllowed(type)
+
+            val message = when {
+                !hasWorkLocation() -> "Aucun lieu configuré"
+                !result -> "Opération impossible : double $type"
+                else -> "$type enregistrée"
+            }
+
+            withContext(Dispatchers.Main) {
+                callback(result, message)
+            }
         }
     }
 
-    // ---------- WORK LOCATION ----------
-    fun saveWorkLocation(location: WorkLocationEntity) {
-        viewModelScope.launch {
-            repository.saveWorkLocation(location)
+
+    // --------------------------------------------------------------------
+    // AUTO EVENT (géofence)
+    // --------------------------------------------------------------------
+    fun autoEvent(type: String, callback: (Boolean, String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = performRecordIfAllowed(type)
+
+            val message = when {
+                !hasWorkLocation() -> "Aucun lieu configuré"
+                !result -> "Opération impossible : double $type"
+                else -> "$type automatique enregistrée"
+            }
+
+            withContext(Dispatchers.Main) {
+                callback(result, message)
+            }
         }
     }
 
-    suspend fun refreshWorkLocation(): WorkLocationEntity? {
-        return repository.getWorkLocation()
-    }
 
-    suspend fun getWorkLocation(): WorkLocationEntity? {
-        return repository.getWorkLocation()
-    }
+    // --------------------------------------------------------------------
+    // TEMPS JOURNALIER EN DIRECT
+    // --------------------------------------------------------------------
+    fun totalMinutesToday(): StateFlow<Int> {
 
-    // ----------- STATS ----------
-    fun getTodayRange(): Pair<Long, Long> {
-        val cal = Calendar.getInstance()
-        cal.set(Calendar.HOUR_OF_DAY, 0)
-        cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0)
-        cal.set(Calendar.MILLISECOND, 0)
-        val start = cal.timeInMillis
-        cal.add(Calendar.DAY_OF_MONTH, 1)
-        val end = cal.timeInMillis - 1
-        return start to end
-    }
+        val calendar = Calendar.getInstance()
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
 
-    fun totalMinutesToday(): StateFlow<Long> {
-        val (from, to) = getTodayRange()
-        return repository.getPresencesBetween(from, to)
+        val startOfDay = calendar.timeInMillis
+        val endOfDay = startOfDay + 24 * 60 * 60 * 1000L
+
+        return repository.getPresencesBetween(startOfDay, endOfDay)
             .map { entries ->
-                var totalMs = 0L
-                var lastIn: Long? = null
-                entries.forEach { e ->
-                    if (e.type == "ENTREE") lastIn = e.timestamp
-                    else if (e.type == "SORTIE" && lastIn != null) {
-                        totalMs += (e.timestamp - lastIn!!)
-                        lastIn = null
+                var totalMinutes = 0
+                var lastEntryTime: Long? = null
+                var lastType: String? = null
+
+                for (entry in entries.sortedBy { it.timestamp }) {
+                    if (entry.type == "ENTREE") {
+                        lastEntryTime = entry.timestamp
+                        lastType = "ENTREE"
+                    }
+                    else if (entry.type == "SORTIE" && lastType == "ENTREE" && lastEntryTime != null) {
+                        val diff = entry.timestamp - lastEntryTime
+                        totalMinutes += (diff / 60000).toInt()
+                        lastEntryTime = null
+                        lastType = "SORTIE"
                     }
                 }
-                totalMs / 60000L
+
+                // entrée en cours
+                if (lastType == "ENTREE" && lastEntryTime != null) {
+                    val now = System.currentTimeMillis()
+                    val diff = now - lastEntryTime
+                    totalMinutes += (diff / 60000).toInt()
+                }
+
+                totalMinutes
             }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     }
+
+
+    // --------------------------------------------------------------------
+    // LOGIQUE D’ENREGISTREMENT
+    // --------------------------------------------------------------------
+    private suspend fun hasWorkLocation(): Boolean {
+        return repository.getWorkLocation() != null
+    }
+
+    private suspend fun performRecordIfAllowed(type: String): Boolean {
+
+        if (!hasWorkLocation()) return false
+
+        val last = allPresences.value.firstOrNull()
+
+        if (last != null && last.type == type) return false
+
+        val now = System.currentTimeMillis()
+
+        repository.insertPresence(
+            PresenceEntry(
+                timestamp = now,
+                type = type,
+                locationName = "WORK"
+            )
+        )
+        return true
+    }
+
+
+    // --------------------------------------------------------------------
+    // WORK LOCATION API
+    // --------------------------------------------------------------------
+    suspend fun refreshWorkLocation() = repository.getWorkLocation()
+
+    suspend fun saveWorkLocation(loc: WorkLocationEntity) {
+        repository.saveWorkLocation(loc)
+    }
+
+    suspend fun getWorkLocation() = repository.getWorkLocation()
 }
