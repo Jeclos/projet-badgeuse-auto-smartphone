@@ -67,6 +67,17 @@ class PresenceViewModel(private val repository: PresenceRepository) : ViewModel(
         }
     }
 
+    fun updatePresence(entry: PresenceEntry) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updatePresence(entry)
+        }
+    }
+
+    fun deletePresence(entry: PresenceEntry) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deletePresence(entry)
+        }
+    }
 
     // --------------------------------------------------------------------
     // AUTO EVENT (géofence)

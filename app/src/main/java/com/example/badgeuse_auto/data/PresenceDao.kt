@@ -4,6 +4,9 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
+import androidx.room.Update
+import androidx.room.Delete
+
 
 @Dao
 interface PresenceDao {
@@ -24,4 +27,11 @@ interface PresenceDao {
     // ⭐ NOUVEAU — obtenir la dernière entrée
     @Query("SELECT * FROM presence_table ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLast(): PresenceEntry?
+
+    @Update
+    suspend fun update(entry: PresenceEntry)
+
+    @Delete
+    suspend fun delete(entry: PresenceEntry)
+
 }

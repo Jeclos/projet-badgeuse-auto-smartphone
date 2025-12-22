@@ -19,6 +19,9 @@ class SettingsViewModel(
         exitDistance: Int,
         enterDelaySec: Int,
         exitDelaySec: Int,
+        lunchEnabled: Boolean,
+        lunchOutside: Boolean,
+        lunchDurationMin: Int,
         onDone: () -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -28,13 +31,17 @@ class SettingsViewModel(
                     enterDistance = enterDistance,
                     exitDistance = exitDistance,
                     enterDelaySec = enterDelaySec,
-                    exitDelaySec = exitDelaySec
+                    exitDelaySec = exitDelaySec,
+                    lunchBreakEnabled = lunchEnabled,
+                    lunchBreakOutside = lunchOutside,
+                    lunchBreakDurationMin = lunchDurationMin
                 )
             )
 
             withContext(Dispatchers.Main) { onDone() }
         }
     }
+
     fun setDailyWorkHours(hours: Int) {
         viewModelScope.launch {
             repository.updateDailyWorkHours(hours)

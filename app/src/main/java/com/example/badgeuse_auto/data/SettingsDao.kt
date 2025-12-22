@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface SettingsDao {
 
-    @Query("SELECT * FROM settings WHERE id = 1 LIMIT 1")
+    @Query("SELECT * FROM settings LIMIT 1")
     suspend fun getSettings(): SettingsEntity?
 
     @Query("SELECT * FROM settings LIMIT 1")

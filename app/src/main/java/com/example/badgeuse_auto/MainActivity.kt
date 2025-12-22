@@ -34,29 +34,41 @@ class MainActivity : ComponentActivity() {
 
         requestPermissions(locationPermissions, requestCode)
 
-        // --- DATABASES ---
+        // --------------------------------------------------
+        // DATABASE UNIQUE
+        // --------------------------------------------------
         val db = PresenceDatabase.getDatabase(this)
-        val settingsDb = SettingsDatabase.getDatabase(this)
 
-        // --- REPOSITORIES ---
+        // --------------------------------------------------
+        // REPOSITORIES
+        // --------------------------------------------------
         val presenceRepo = PresenceRepository(
             presenceDao = db.presenceDao(),
             workLocationDao = db.workLocationDao(),
             dailySummaryDao = db.dailySummaryDao(),
-            settingsDao = settingsDb.settingsDao()
+            settingsDao = db.settingsDao() // ✅ ICI
         )
-        val settingsRepo = SettingsRepository(settingsDb.settingsDao())
 
-        // --- VIEWMODELS ---
+        val settingsRepo = SettingsRepository(
+            settingsDao = db.settingsDao() // ✅ ET ICI
+        )
+
+        // --------------------------------------------------
+        // VIEWMODELS
+        // --------------------------------------------------
         val presenceViewModel =
-            PresenceViewModelFactory(presenceRepo).create(PresenceViewModel::class.java)
+            PresenceViewModelFactory(presenceRepo)
+                .create(PresenceViewModel::class.java)
 
         val settingsViewModel =
-            SettingsViewModelFactory(settingsRepo).create(SettingsViewModel::class.java)
+            SettingsViewModelFactory(settingsRepo)
+                .create(SettingsViewModel::class.java)
 
         enableEdgeToEdge()
 
-        // --- UI ROOT ---
+        // --------------------------------------------------
+        // UI
+        // --------------------------------------------------
         setContent {
             Badgeuse_AutoTheme {
                 RootNav(
@@ -69,7 +81,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Création geofence au démarrage
+        // --------------------------------------------------
+        // GEOFENCE AU DÉMARRAGE
+        // --------------------------------------------------
         lifecycleScope.launch {
             val loc = presenceViewModel.getWorkLocation()
             if (loc != null) {
@@ -78,8 +92,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // -------------------------------------------------------------
-    // METTRE À JOUR LE GEOFENCE
     // -------------------------------------------------------------
     private fun updateGeofence(vm: PresenceViewModel) {
         lifecycleScope.launch {
@@ -92,8 +104,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // -------------------------------------------------------------
-    // ENREGISTRER LE GEOFENCE
     // -------------------------------------------------------------
     private suspend fun registerWorkGeofence(latitude: Double, longitude: Double) {
 
@@ -134,3 +144,4 @@ class MainActivity : ComponentActivity() {
         geofencingClient.addGeofences(request, pendingIntent)
     }
 }
+

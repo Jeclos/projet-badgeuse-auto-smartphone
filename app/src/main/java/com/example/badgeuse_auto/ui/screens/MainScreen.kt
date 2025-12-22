@@ -1,5 +1,6 @@
 package com.example.badgeuse_auto.ui.screens
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,9 +15,12 @@ import com.example.badgeuse_auto.data.PresenceEntry
 import com.example.badgeuse_auto.data.PresenceViewModel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.*import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+
 
 @OptIn(ExperimentalMaterial3Api::class)
+
 @Composable
 fun MainScreen(
     viewModel: PresenceViewModel,
@@ -27,6 +31,9 @@ fun MainScreen(
 
     val presences by viewModel.allPresences.collectAsState()
     val clock = remember { mutableStateOf(System.currentTimeMillis()) }
+
+    // Dialog d’édition
+    var entryToEdit by remember { mutableStateOf<PresenceEntry?>(null) }
 
     // --- Clock update every second ---
     LaunchedEffect(Unit) {
@@ -109,26 +116,20 @@ fun MainScreen(
             ) {
 
                 Button(onClick = {
-                    viewModel.manualEvent("ENTREE") { success, message ->
-                        // afficher le message dans un Toast ou Snackbar
-                    }
-
+                    viewModel.manualEvent("ENTREE") { _, _ -> }
                 }) {
                     Text("Entrée")
                 }
+
                 Button(onClick = onNavigateSettings) {
                     Text("Configuration")
                 }
 
                 Button(onClick = {
-                    viewModel.manualEvent("SORTIE") { success, message ->
-                        // ...
-                    }
-
+                    viewModel.manualEvent("SORTIE") { _, _ -> }
                 }) {
                     Text("Sortie")
                 }
-
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -154,21 +155,78 @@ fun MainScreen(
             // --- History list ---
             LazyColumn {
                 items(presences) { entry ->
-                    PresenceCard(entry)
+                    PresenceCard(
+                        entry = entry,
+                        onEdit = { entryToEdit = it },
+                        onDelete = { viewModel.deletePresence(it) }
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
     }
+
+    // --- DIALOG EDITION ---
+    entryToEdit?.let { entry ->
+        EditPresenceDialog(
+            entry = entry,
+            onDismiss = { entryToEdit = null },
+            onValidate = { updated ->
+                viewModel.updatePresence(updated)
+                entryToEdit = null
+            }
+        )
+    }
 }
 
+
+
+// ---------------------------------------------------------------------
+// Carte avec menu Modifier / Supprimer
+// ---------------------------------------------------------------------
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun PresenceCard(entry: PresenceEntry) {
+fun PresenceCard(
+    entry: PresenceEntry,
+    onEdit: (PresenceEntry) -> Unit,
+    onDelete: (PresenceEntry) -> Unit
+) {
+
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {},
+                onLongClick = { menuExpanded = true }
+            ),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+
+            // Menu contextuel
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+
+                DropdownMenuItem(
+                    text = { Text("Modifier") },
+                    onClick = {
+                        menuExpanded = false
+                        onEdit(entry)
+                    }
+                )
+
+                DropdownMenuItem(
+                    text = { Text("Supprimer") },
+                    onClick = {
+                        menuExpanded = false
+                        onDelete(entry)
+                    }
+                )
+            }
 
             Text(
                 text = "${entry.type} - ${formatDate(entry.timestamp)}",
@@ -183,7 +241,87 @@ fun PresenceCard(entry: PresenceEntry) {
     }
 }
 
-// --- Utils ---
+
+
+// ---------------------------------------------------------------------
+// Dialog d’édition d’une présence
+// ---------------------------------------------------------------------
+@Composable
+fun EditPresenceDialog(
+    entry: PresenceEntry,
+    onDismiss: () -> Unit,
+    onValidate: (PresenceEntry) -> Unit
+) {
+
+    var type by remember { mutableStateOf(entry.type) }
+    var location by remember { mutableStateOf(entry.locationName) }
+    var timestampStr by remember { mutableStateOf(formatDate(entry.timestamp)) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Modifier la présence") },
+
+        text = {
+            Column {
+
+                OutlinedTextField(
+                    value = type,
+                    onValueChange = { type = it },
+                    label = { Text("Type (ENTREE / SORTIE)") }
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = location,
+                    onValueChange = { location = it },
+                    label = { Text("Lieu") }
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = timestampStr,
+                    onValueChange = { timestampStr = it },
+                    label = { Text("Date (dd/MM/yyyy HH:mm)") }
+                )
+            }
+        },
+
+        confirmButton = {
+            TextButton(onClick = {
+                val newTs = try {
+                    SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                        .parse(timestampStr)?.time ?: entry.timestamp
+                } catch (e: Exception) {
+                    entry.timestamp
+                }
+
+                onValidate(
+                    entry.copy(
+                        type = type,
+                        locationName = location,
+                        timestamp = newTs
+                    )
+                )
+            }) {
+                Text("Valider")
+            }
+        },
+
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Annuler")
+            }
+        }
+    )
+}
+
+
+
+// ---------------------------------------------------------------------
+// Utils
+// ---------------------------------------------------------------------
 fun formatDate(ts: Long): String {
     val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
     return sdf.format(Date(ts))

@@ -10,7 +10,6 @@ import com.example.badgeuse_auto.data.PresenceViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import com.example.badgeuse_auto.data.SettingsDatabase
 
 
 class WorkGeofenceReceiver : BroadcastReceiver() {
@@ -30,7 +29,8 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
         // Charger les deux databases
         // ----------------------------
         val db = PresenceDatabase.getDatabase(context)
-        val settingsDb = SettingsDatabase.getDatabase(context)
+
+
 
         // ----------------------------
         // Créer Repository à 4 paramètres
@@ -39,8 +39,9 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
             presenceDao = db.presenceDao(),
             workLocationDao = db.workLocationDao(),
             dailySummaryDao = db.dailySummaryDao(),
-            settingsDao = settingsDb.settingsDao()   // ← ✔ AJOUT CRITIQUE
+            settingsDao = db.settingsDao() // ✅ depuis PresenceDatabase
         )
+
 
         val viewModel = PresenceViewModel(repo)
 

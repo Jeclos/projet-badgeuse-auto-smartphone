@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
         SettingsEntity::class,
         DailyWorkSummary::class
     ],
-    version = 5,
+    version = 7, // 🔴 ON INCRÉMENTE LA VERSION
     exportSchema = false
 )
 abstract class PresenceDatabase : RoomDatabase() {
@@ -20,6 +20,7 @@ abstract class PresenceDatabase : RoomDatabase() {
     abstract fun presenceDao(): PresenceDao
     abstract fun workLocationDao(): WorkLocationDao
     abstract fun dailySummaryDao(): DailySummaryDao
+    abstract fun settingsDao(): SettingsDao // ✅ AJOUT ICI
 
     companion object {
         @Volatile private var INSTANCE: PresenceDatabase? = null
@@ -39,3 +40,4 @@ abstract class PresenceDatabase : RoomDatabase() {
         }
     }
 }
+

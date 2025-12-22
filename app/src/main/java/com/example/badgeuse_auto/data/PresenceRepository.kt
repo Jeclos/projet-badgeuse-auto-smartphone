@@ -34,6 +34,15 @@ class PresenceRepository(
         recomputeAndSaveDailySummary(dayStart)
     }
 
+    suspend fun updatePresence(entry: PresenceEntry) {
+        presenceDao.update(entry)
+        recomputeAndSaveDailySummary(computeStartOfDay(entry.timestamp))
+    }
+
+    suspend fun deletePresence(entry: PresenceEntry) {
+        presenceDao.delete(entry)
+        recomputeAndSaveDailySummary(computeStartOfDay(entry.timestamp))
+    }
 
     // --------------------------------------------------------------------
     // DAILY SUMMARY API
