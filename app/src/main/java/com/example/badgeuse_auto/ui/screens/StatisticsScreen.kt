@@ -4,10 +4,13 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -22,22 +25,13 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-/* ---------------- ENUM ---------------- */
-
-enum class QuickPeriod(val label: String) {
-    THIS_WEEK("Cette semaine"),
-    LAST_WEEK("Semaine précédente"),
-    THIS_MONTH("Ce mois"),
-    LAST_MONTH("Mois précédent")
-}
-
 /* ---------------- SCREEN ---------------- */
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatisticsScreen(
     viewModel: PresenceViewModel,
-    onBack: () -> Unit = {}
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -47,17 +41,17 @@ fun StatisticsScreen(
 
     val dailyWorkMinutes = settings.dailyWorkHours * 60
 
-    var startDate by remember { mutableStateOf<Long?>(null) }
-    var endDate by remember { mutableStateOf<Long?>(null) }
-    var filtered by remember { mutableStateOf<List<DailyWorkSummary>>(emptyList()) }
     var selectedPeriod by remember { mutableStateOf(QuickPeriod.THIS_WEEK) }
+    var filtered by remember { mutableStateOf<List<DailyWorkSummary>>(emptyList()) }
 
-    val listToDisplay =
-        if (startDate != null && endDate != null) filtered else allSummaries
+    LaunchedEffect(selectedPeriod) {
+        val (s, e) = computePeriod(selectedPeriod)
+        filtered = viewModel.loadSummariesBetween(s, e)
+    }
 
-    val totalMinutes = listToDisplay.sumOf { it.totalMinutes }
+    val totalMinutes = filtered.sumOf { it.totalMinutes }
     val overtimeMinutes =
-        (totalMinutes - listToDisplay.size * dailyWorkMinutes).coerceAtLeast(0)
+        (totalMinutes - filtered.size * dailyWorkMinutes).coerceAtLeast(0)
 
     Scaffold(
         topBar = {
@@ -79,178 +73,138 @@ fun StatisticsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            item {
-                SummaryCard(
-                    "Temps total",
-                    "${totalMinutes / 60}h ${totalMinutes % 60}min"
-                )
-            }
+            /* ---------- KPI ---------- */
 
             item {
-                SummaryCard(
-                    "Heures supplémentaires",
-                    "${overtimeMinutes / 60}h ${overtimeMinutes % 60}min"
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    StatCard(
+                        title = "Temps total",
+                        value = formatMinutes(totalMinutes),
+                        modifier = Modifier.weight(1f)
+                    )
+                    StatCard(
+                        title = "Heures sup.",
+                        value = formatMinutes(overtimeMinutes),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
+            /* ---------- FILTER ---------- */
+
             item {
-                QuickFilterDropdown(selectedPeriod) {
-                    selectedPeriod = it
-                    val (s, e) = computePeriod(it)
-                    startDate = s
-                    endDate = e
-                    scope.launch {
-                        filtered = viewModel.loadSummariesBetween(s, e)
+                Card {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "Période",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        QuickFilterDropdown(
+                            selectedPeriod = selectedPeriod,
+                            onPeriodSelected = { selectedPeriod = it }
+                        )
                     }
                 }
             }
 
+            /* ---------- LIST ---------- */
+
             item {
                 Text(
-                    "Filtre manuel par dates",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium
+                    "Détail journalier",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
                 )
             }
 
-            item {
-                DateRangePickerRow(
-                    startDate,
-                    endDate,
-                    onStartDateSelected = { startDate = it },
-                    onEndDateSelected = { endDate = it + 86399999L }
-                )
+            items(filtered) { summary ->
+                DaySummaryCard(summary)
             }
 
-            item {
-                SummaryList(listToDisplay)
-            }
+            /* ---------- EXPORT ---------- */
 
             item {
                 Button(
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = listToDisplay.isNotEmpty(),
+                    enabled = filtered.isNotEmpty(),
                     onClick = {
                         scope.launch {
-                            val file = CsvExportUtils.exportSummariesToCsv(context, listToDisplay)
+                            val file = CsvExportUtils.exportSummariesToCsv(context, filtered)
                             shareCsv(context, file)
                         }
                     }
                 ) {
-                    Text("Exporter CSV")
+                    Icon(Icons.Default.FileDownload, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Exporter en CSV")
                 }
             }
         }
     }
 }
 
-/* ---------------- COMPONENTS ---------------- */
+/* ---------------- UI COMPONENTS ---------------- */
 
 @Composable
-fun SummaryCard(title: String, value: String) {
-    Card {
-        Column(Modifier.padding(16.dp)) {
-            Text(title, fontWeight = FontWeight.Medium)
-            Text(value, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-fun SummaryList(items: List<DailyWorkSummary>) {
-    val sdf = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
-    Column {
-        items.forEach {
-            Text("${sdf.format(Date(it.dayStart))} – ${it.totalMinutes} min")
-        }
-    }
-}
-
-/* ---------------- DATE PICKER ---------------- */
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DateRangePickerRow(
-    startDate: Long?,
-    endDate: Long?,
-    onStartDateSelected: (Long) -> Unit,
-    onEndDateSelected: (Long) -> Unit
+fun StatCard(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier
 ) {
-    val sdf = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
-    var showStart by remember { mutableStateOf(false) }
-    var showEnd by remember { mutableStateOf(false) }
-
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { showStart = true }) {
-            Text(startDate?.let { sdf.format(Date(it)) } ?: "Début")
-        }
-        OutlinedButton(onClick = { showEnd = true }) {
-            Text(endDate?.let { sdf.format(Date(it)) } ?: "Fin")
+    Card(modifier = modifier) {
+        Column(
+            Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
+}
 
-    if (showStart) {
-        val state = rememberDatePickerState(initialSelectedDateMillis = startDate)
-        DatePickerDialog(
-            onDismissRequest = { showStart = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.selectedDateMillis?.let(onStartDateSelected)
-                    showStart = false
-                }) { Text("OK") }
-            }
-        ) { DatePicker(state) }
-    }
+@Composable
+fun DaySummaryCard(summary: DailyWorkSummary) {
+    val sdf = remember { SimpleDateFormat("EEEE dd/MM", Locale.getDefault()) }
 
-    if (showEnd) {
-        val state = rememberDatePickerState(initialSelectedDateMillis = endDate)
-        DatePickerDialog(
-            onDismissRequest = { showEnd = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.selectedDateMillis?.let(onEndDateSelected)
-                    showEnd = false
-                }) { Text("OK") }
+    Card {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(
+                    sdf.format(Date(summary.dayStart)),
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    "Temps travaillé",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
-        ) { DatePicker(state) }
+            Text(
+                formatMinutes(summary.totalMinutes),
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
 /* ---------------- HELPERS ---------------- */
 
-private fun computePeriod(period: QuickPeriod): Pair<Long, Long> {
-    val c = Calendar.getInstance()
-    return when (period) {
-        QuickPeriod.THIS_WEEK -> {
-            c.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-            val s = c.timeInMillis
-            c.add(Calendar.DAY_OF_WEEK, 6)
-            s to (c.timeInMillis + 86399999L)
-        }
-        QuickPeriod.LAST_WEEK -> {
-            c.add(Calendar.WEEK_OF_YEAR, -1)
-            c.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-            val s = c.timeInMillis
-            c.add(Calendar.DAY_OF_WEEK, 6)
-            s to (c.timeInMillis + 86399999L)
-        }
-        QuickPeriod.THIS_MONTH -> {
-            c.set(Calendar.DAY_OF_MONTH, 1)
-            val s = c.timeInMillis
-            c.set(Calendar.DAY_OF_MONTH, c.getActualMaximum(Calendar.DAY_OF_MONTH))
-            s to (c.timeInMillis + 86399999L)
-        }
-        QuickPeriod.LAST_MONTH -> {
-            c.add(Calendar.MONTH, -1)
-            c.set(Calendar.DAY_OF_MONTH, 1)
-            val s = c.timeInMillis
-            c.set(Calendar.DAY_OF_MONTH, c.getActualMaximum(Calendar.DAY_OF_MONTH))
-            s to (c.timeInMillis + 86399999L)
-        }
-    }
-}
-
-/* ---------------- CSV ---------------- */
+private fun formatMinutes(minutes: Int): String =
+    "${minutes / 60}h ${minutes % 60}min"
 
 private fun shareCsv(context: Context, file: File) {
     val uri = FileProvider.getUriForFile(
@@ -264,6 +218,47 @@ private fun shareCsv(context: Context, file: File) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(intent, "Partager CSV"))
+}
+enum class QuickPeriod(val label: String) {
+    THIS_WEEK("Cette semaine"),
+    LAST_WEEK("Semaine précédente"),
+    THIS_MONTH("Ce mois"),
+    LAST_MONTH("Mois précédent")
+}
+private fun computePeriod(period: QuickPeriod): Pair<Long, Long> {
+    val c = Calendar.getInstance()
+
+    return when (period) {
+        QuickPeriod.THIS_WEEK -> {
+            c.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+            val start = c.timeInMillis
+            c.add(Calendar.DAY_OF_WEEK, 6)
+            start to (c.timeInMillis + 86_399_999L)
+        }
+
+        QuickPeriod.LAST_WEEK -> {
+            c.add(Calendar.WEEK_OF_YEAR, -1)
+            c.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+            val start = c.timeInMillis
+            c.add(Calendar.DAY_OF_WEEK, 6)
+            start to (c.timeInMillis + 86_399_999L)
+        }
+
+        QuickPeriod.THIS_MONTH -> {
+            c.set(Calendar.DAY_OF_MONTH, 1)
+            val start = c.timeInMillis
+            c.set(Calendar.DAY_OF_MONTH, c.getActualMaximum(Calendar.DAY_OF_MONTH))
+            start to (c.timeInMillis + 86_399_999L)
+        }
+
+        QuickPeriod.LAST_MONTH -> {
+            c.add(Calendar.MONTH, -1)
+            c.set(Calendar.DAY_OF_MONTH, 1)
+            val start = c.timeInMillis
+            c.set(Calendar.DAY_OF_MONTH, c.getActualMaximum(Calendar.DAY_OF_MONTH))
+            start to (c.timeInMillis + 86_399_999L)
+        }
+    }
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -6,20 +6,26 @@ import androidx.compose.ui.graphics.Color
 
 
 
-private val FunDarkColorScheme = darkColorScheme(
-    primary = FunPurple,
-    secondary = FunPink,
-    tertiary = FunGreen,
-    background = DarkBackground,
-    surface = DarkSurface,
-    onPrimary = Color.White
+private val LightColors = lightColorScheme(
+    primary = Color(0xFF2563EB),
+    secondary = Color(0xFF10B981),
+
+    background = Color(0xFFF8FAFC),
+    surface = Color(0xFFFFFFFF),
+
+    outline = Color(0xFFE5E7EB),
+
+    onPrimary = Color.White,
+    onSecondary = Color.White,
+    onBackground = Color(0xFF0F172A),
+    onSurface = Color(0xFF0F172A)
 )
 
 
 @Composable
 fun Badgeuse_AutoTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = FunDarkColorScheme,
+        colorScheme = LightColors,
         typography = Typography(),
         content = content
     )

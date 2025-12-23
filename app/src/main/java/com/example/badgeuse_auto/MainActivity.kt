@@ -74,9 +74,7 @@ class MainActivity : ComponentActivity() {
                 RootNav(
                     presenceViewModel = presenceViewModel,
                     settingsViewModel = settingsViewModel,
-                    onGeofenceUpdate = {
-                        updateGeofence(presenceViewModel)
-                    }
+
                 )
             }
         }

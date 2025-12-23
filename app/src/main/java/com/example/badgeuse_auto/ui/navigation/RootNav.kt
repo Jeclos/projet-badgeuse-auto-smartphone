@@ -1,74 +1,74 @@
 package com.example.badgeuse_auto.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.badgeuse_auto.data.PresenceViewModel
 import com.example.badgeuse_auto.data.SettingsViewModel
 import com.example.badgeuse_auto.ui.screens.MainScreen
-import com.example.badgeuse_auto.ui.screens.StatisticsScreen
-import com.example.badgeuse_auto.ui.screens.WorkLocationScreen
 import com.example.badgeuse_auto.ui.screens.SettingsScreen
+import com.example.badgeuse_auto.ui.screens.StatisticsScreen
+
+/* ----------------------------
+   Destinations
+   ---------------------------- */
 
 object Destinations {
     const val MAIN = "main"
     const val STATS = "stats"
-    const val WORK_LOCATION = "work_location"
     const val SETTINGS = "settings"
 }
+
+/* ----------------------------
+   Root Navigation
+   ---------------------------- */
 
 @Composable
 fun RootNav(
     presenceViewModel: PresenceViewModel,
     settingsViewModel: SettingsViewModel,
-    onGeofenceUpdate: () -> Unit = {}
+    navController: NavHostController = rememberNavController()
 ) {
-    val navController = rememberNavController()
-
     NavHost(
         navController = navController,
         startDestination = Destinations.MAIN
     ) {
 
-        // ---------------------------------------------------------------------
-        // MAIN SCREEN
-        // ---------------------------------------------------------------------
+        /* ----------------------------
+           MAIN SCREEN
+           ---------------------------- */
         composable(Destinations.MAIN) {
             MainScreen(
                 viewModel = presenceViewModel,
-                onNavigateStats = { navController.navigate(Destinations.STATS) },
-                onNavigateWorkLocation = { navController.navigate(Destinations.WORK_LOCATION) },
-                onNavigateSettings = { navController.navigate(Destinations.SETTINGS) }
+                onNavigateStats = {
+                    navController.navigate(Destinations.STATS)
+                },
+                onNavigateSettings = {
+                    navController.navigate(Destinations.SETTINGS)
+                },
+
             )
         }
 
-        // ---------------------------------------------------------------------
-        // STATS SCREEN
-        // ---------------------------------------------------------------------
+        /* ----------------------------
+           STATS SCREEN
+           ---------------------------- */
         composable(Destinations.STATS) {
             StatisticsScreen(
                 viewModel = presenceViewModel,
                 onBack = { navController.popBackStack() }
             )
         }
-        // ---------------------------------------------------------------------
-        // WORK LOCATION SCREEN
-        // ---------------------------------------------------------------------
-        composable(Destinations.WORK_LOCATION) {
-            WorkLocationScreen(
-                viewModel = presenceViewModel,
-                onBack = { navController.popBackStack() },
-                onWorkLocationSaved = { onGeofenceUpdate() }
-            )
-        }
 
-        // ---------------------------------------------------------------------
-        // SETTINGS SCREEN
-        // ---------------------------------------------------------------------
+        /* ----------------------------
+           SETTINGS SCREEN
+           ---------------------------- */
         composable(Destinations.SETTINGS) {
             SettingsScreen(
-                viewModel = settingsViewModel,
+                settingsViewModel = settingsViewModel,
+                presenceViewModel = presenceViewModel,
                 onBack = { navController.popBackStack() }
             )
         }

@@ -18,29 +18,25 @@ import com.example.badgeuse_auto.data.PresenceViewModel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
-
-
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.AccessTime
 
 
 @OptIn(ExperimentalMaterial3Api::class)
-
 @Composable
 fun MainScreen(
     viewModel: PresenceViewModel,
     onNavigateStats: () -> Unit,
-    onNavigateWorkLocation: () -> Unit,
-    onNavigateSettings: () -> Unit,
-
-
-){
-
-    val presences by viewModel.allPresences.collectAsState()
+    onNavigateSettings: () -> Unit
+) {
+    val presences by viewModel.allPresences.collectAsState(initial = emptyList())
+    val workLocation by viewModel.workLocation.collectAsState(initial = null)
     val clock = remember { mutableStateOf(System.currentTimeMillis()) }
 
-    // Dialog d’édition
     var entryToEdit by remember { mutableStateOf<PresenceEntry?>(null) }
 
-    // --- Clock update every second ---
     LaunchedEffect(Unit) {
         while (true) {
             clock.value = System.currentTimeMillis()
@@ -51,20 +47,31 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Badgeuse Auto") },
-                actions = {
-                    IconButton(onClick = onNavigateSettings) {
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Configuration"
+                            imageVector = Icons.Default.AccessTime,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Text(
+                            text = "Badgeuse Auto",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
-
+                },
+                actions = {
+                    IconButton(onClick = onNavigateSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Configuration")
+                    }
                     IconButton(onClick = onNavigateStats) {
-                        Icon(
-                            imageVector = Icons.Filled.Leaderboard,
-                            contentDescription = "Statistiques"
-                        )
+                        Icon(Icons.Filled.Leaderboard, contentDescription = "Statistiques")
                     }
                 }
             )
@@ -78,90 +85,42 @@ fun MainScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // --- Clock display ---
             Text(
                 text = "Heure : ${formatClock(clock.value)}",
                 style = MaterialTheme.typography.titleMedium
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
 
-            // --- Location dropdown ---
-            var selectedLocation by remember { mutableStateOf("Bureau") }
-            var expanded by remember { mutableStateOf(false) }
-            val locations = listOf("Bureau", "Maison", "Client")
+            Text(
+                text = "Lieu de travail : ${workLocation?.name ?: "Non configuré"}",
+                style = MaterialTheme.typography.bodyMedium
+            )
 
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded }
-            ) {
-                TextField(
-                    value = selectedLocation,
-                    onValueChange = {},
-                    label = { Text("Lieu") },
-                    readOnly = true,
-                    modifier = Modifier.menuAnchor()
-                )
+            Spacer(Modifier.height(24.dp))
 
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    locations.forEach { loc ->
-                        DropdownMenuItem(
-                            text = { Text(loc) },
-                            onClick = {
-                                selectedLocation = loc
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // --- Entry / Exit buttons ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-
-                Button(onClick = {
-                    viewModel.manualEvent("ENTREE") { _, _ -> }
-                }) {
+                Button(onClick = { viewModel.manualEvent("ENTREE") { _, _ -> } }) {
                     Text("Entrée")
                 }
-
-                Button(onClick = {
-                    viewModel.manualEvent("SORTIE") { _, _ -> }
-                }) {
+                Button(onClick = { viewModel.manualEvent("SORTIE") { _, _ -> } }) {
                     Text("Sortie")
                 }
             }
 
+            Spacer(Modifier.height(24.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // --- NEW BUTTON: Work Location ---
-            Button(
-                onClick = onNavigateWorkLocation,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Lieu de travail")
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // --- Title ---
             Text(
                 text = "Historique des présences",
-                style = MaterialTheme.typography.titleLarge
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(vertical = 8.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // --- History list ---
             LazyColumn {
                 items(presences) { entry ->
                     PresenceCard(
@@ -169,30 +128,32 @@ fun MainScreen(
                         onEdit = { entryToEdit = it },
                         onDelete = { viewModel.deletePresence(it) }
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
     }
 
-    // --- DIALOG EDITION ---
     entryToEdit?.let { entry ->
         EditPresenceDialog(
             entry = entry,
             onDismiss = { entryToEdit = null },
-            onValidate = { updated ->
-                viewModel.updatePresence(updated)
+            onValidate = {
+                viewModel.updatePresence(it)
                 entryToEdit = null
             }
         )
     }
 }
+private fun formatClock(timeMillis: Long): String {
+    val formatter = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+    return formatter.format(Date(timeMillis))
+}
+private fun formatDate(timeMillis: Long): String {
+    val formatter = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+    return formatter.format(Date(timeMillis))
+}
 
-
-
-// ---------------------------------------------------------------------
-// Carte avec menu Modifier / Supprimer
-// ---------------------------------------------------------------------
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PresenceCard(
@@ -200,7 +161,6 @@ fun PresenceCard(
     onEdit: (PresenceEntry) -> Unit,
     onDelete: (PresenceEntry) -> Unit
 ) {
-
     var menuExpanded by remember { mutableStateOf(false) }
 
     Card(
@@ -212,14 +172,29 @@ fun PresenceCard(
             ),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Box {
+            Column(modifier = Modifier.padding(16.dp)) {
 
-            // Menu contextuel
+                Text(
+                    text = "${entry.type} - ${formatDate(entry.timestamp)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+
+                )
+
+                Spacer(Modifier.height(4.dp))
+
+                Text(
+                    text = "Lieu : ${entry.locationName}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
             DropdownMenu(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false }
             ) {
-
                 DropdownMenuItem(
                     text = { Text("Modifier") },
                     onClick = {
@@ -227,7 +202,6 @@ fun PresenceCard(
                         onEdit(entry)
                     }
                 )
-
                 DropdownMenuItem(
                     text = { Text("Supprimer") },
                     onClick = {
@@ -236,32 +210,15 @@ fun PresenceCard(
                     }
                 )
             }
-
-            Text(
-                text = "${entry.type} - ${formatDate(entry.timestamp)}",
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Text(
-                text = "Lieu : ${entry.locationName}",
-                style = MaterialTheme.typography.bodyMedium
-            )
         }
     }
 }
-
-
-
-// ---------------------------------------------------------------------
-// Dialog d’édition d’une présence
-// ---------------------------------------------------------------------
 @Composable
 fun EditPresenceDialog(
     entry: PresenceEntry,
     onDismiss: () -> Unit,
     onValidate: (PresenceEntry) -> Unit
 ) {
-
     var type by remember { mutableStateOf(entry.type) }
     var location by remember { mutableStateOf(entry.locationName) }
     var timestampStr by remember { mutableStateOf(formatDate(entry.timestamp)) }
@@ -269,14 +226,13 @@ fun EditPresenceDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Modifier la présence") },
-
         text = {
             Column {
-
                 OutlinedTextField(
                     value = type,
                     onValueChange = { type = it },
-                    label = { Text("Type (ENTREE / SORTIE)") }
+                    label = { Text("Type (ENTREE / SORTIE)") },
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(Modifier.height(8.dp))
@@ -284,7 +240,8 @@ fun EditPresenceDialog(
                 OutlinedTextField(
                     value = location,
                     onValueChange = { location = it },
-                    label = { Text("Lieu") }
+                    label = { Text("Lieu") },
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(Modifier.height(8.dp))
@@ -292,16 +249,18 @@ fun EditPresenceDialog(
                 OutlinedTextField(
                     value = timestampStr,
                     onValueChange = { timestampStr = it },
-                    label = { Text("Date (dd/MM/yyyy HH:mm)") }
+                    label = { Text("Date (dd/MM/yyyy HH:mm)") },
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         },
-
         confirmButton = {
             TextButton(onClick = {
-                val newTs = try {
-                    SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-                        .parse(timestampStr)?.time ?: entry.timestamp
+                val newTimestamp = try {
+                    SimpleDateFormat(
+                        "dd/MM/yyyy HH:mm",
+                        Locale.getDefault()
+                    ).parse(timestampStr)?.time ?: entry.timestamp
                 } catch (e: Exception) {
                     entry.timestamp
                 }
@@ -310,33 +269,17 @@ fun EditPresenceDialog(
                     entry.copy(
                         type = type,
                         locationName = location,
-                        timestamp = newTs
+                        timestamp = newTimestamp
                     )
                 )
             }) {
                 Text("Valider")
             }
         },
-
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Annuler")
             }
         }
     )
-}
-
-
-
-// ---------------------------------------------------------------------
-// Utils
-// ---------------------------------------------------------------------
-fun formatDate(ts: Long): String {
-    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-    return sdf.format(Date(ts))
-}
-
-fun formatClock(ts: Long): String {
-    val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-    return sdf.format(Date(ts))
 }
