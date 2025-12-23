@@ -10,13 +10,13 @@ plugins {
 android {
     namespace = "com.example.badgeuse_auto"
     compileSdk {
-        version = release(36)
+        version = release(34)
     }
 
     defaultConfig {
         applicationId = "com.example.badgeuse_auto"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
@@ -68,7 +68,7 @@ dependencies {
     // Room
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
-    implementation(libs.androidx.compose.foundation)
+    implementation("androidx.compose.foundation:foundation")
     ksp("androidx.room:room-compiler:2.6.1")
 
     // Location

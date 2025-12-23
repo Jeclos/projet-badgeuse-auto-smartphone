@@ -1,11 +1,13 @@
 package com.example.badgeuse_auto.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,8 +17,9 @@ import com.example.badgeuse_auto.data.PresenceEntry
 import com.example.badgeuse_auto.data.PresenceViewModel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
-import java.util.*import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import java.util.*
+
+
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,7 +29,9 @@ fun MainScreen(
     viewModel: PresenceViewModel,
     onNavigateStats: () -> Unit,
     onNavigateWorkLocation: () -> Unit,
-    onNavigateSettings: () -> Unit
+    onNavigateSettings: () -> Unit,
+
+
 ){
 
     val presences by viewModel.allPresences.collectAsState()
@@ -48,10 +53,17 @@ fun MainScreen(
             TopAppBar(
                 title = { Text("Badgeuse Auto") },
                 actions = {
+                    IconButton(onClick = onNavigateSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Configuration"
+                        )
+                    }
+
                     IconButton(onClick = onNavigateStats) {
                         Icon(
                             imageVector = Icons.Filled.Leaderboard,
-                            contentDescription = "Stats"
+                            contentDescription = "Statistiques"
                         )
                     }
                 }
@@ -121,16 +133,13 @@ fun MainScreen(
                     Text("Entrée")
                 }
 
-                Button(onClick = onNavigateSettings) {
-                    Text("Configuration")
-                }
-
                 Button(onClick = {
                     viewModel.manualEvent("SORTIE") { _, _ -> }
                 }) {
                     Text("Sortie")
                 }
             }
+
 
             Spacer(modifier = Modifier.height(24.dp))
 
