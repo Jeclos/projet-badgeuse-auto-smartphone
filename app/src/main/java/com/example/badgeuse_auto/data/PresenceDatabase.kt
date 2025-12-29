@@ -4,26 +4,28 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 
 @Database(
     entities = [
-        PresenceEntry::class,
+        PresenceEntity::class,
         WorkLocationEntity::class,
-        SettingsEntity::class,
-        DailyWorkSummary::class
+        SettingsEntity::class
     ],
-    version = 7, // 🔴 ON INCRÉMENTE LA VERSION
+    version = 13,
     exportSchema = false
 )
+@TypeConverters(Converters::class)
 abstract class PresenceDatabase : RoomDatabase() {
 
     abstract fun presenceDao(): PresenceDao
     abstract fun workLocationDao(): WorkLocationDao
-    abstract fun dailySummaryDao(): DailySummaryDao
-    abstract fun settingsDao(): SettingsDao // ✅ AJOUT ICI
+
+    abstract fun settingsDao(): SettingsDao
 
     companion object {
-        @Volatile private var INSTANCE: PresenceDatabase? = null
+        @Volatile
+        private var INSTANCE: PresenceDatabase? = null
 
         fun getDatabase(context: Context): PresenceDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -34,10 +36,10 @@ abstract class PresenceDatabase : RoomDatabase() {
                 )
                     .fallbackToDestructiveMigration()
                     .build()
+
                 INSTANCE = instance
                 instance
             }
         }
     }
 }
-

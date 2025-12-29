@@ -10,6 +10,7 @@ import com.example.badgeuse_auto.data.SettingsViewModel
 import com.example.badgeuse_auto.ui.screens.MainScreen
 import com.example.badgeuse_auto.ui.screens.SettingsScreen
 import com.example.badgeuse_auto.ui.screens.StatisticsScreen
+import com.example.badgeuse_auto.ui.location.LocationViewModel
 
 /* ----------------------------
    Destinations
@@ -29,6 +30,7 @@ object Destinations {
 fun RootNav(
     presenceViewModel: PresenceViewModel,
     settingsViewModel: SettingsViewModel,
+    locationViewModel: LocationViewModel,
     navController: NavHostController = rememberNavController()
 ) {
     NavHost(
@@ -36,25 +38,19 @@ fun RootNav(
         startDestination = Destinations.MAIN
     ) {
 
-        /* ----------------------------
-           MAIN SCREEN
-           ---------------------------- */
         composable(Destinations.MAIN) {
             MainScreen(
                 viewModel = presenceViewModel,
+                locationViewModel = locationViewModel,
                 onNavigateStats = {
                     navController.navigate(Destinations.STATS)
                 },
                 onNavigateSettings = {
                     navController.navigate(Destinations.SETTINGS)
-                },
-
+                }
             )
         }
 
-        /* ----------------------------
-           STATS SCREEN
-           ---------------------------- */
         composable(Destinations.STATS) {
             StatisticsScreen(
                 viewModel = presenceViewModel,
@@ -62,9 +58,6 @@ fun RootNav(
             )
         }
 
-        /* ----------------------------
-           SETTINGS SCREEN
-           ---------------------------- */
         composable(Destinations.SETTINGS) {
             SettingsScreen(
                 settingsViewModel = settingsViewModel,

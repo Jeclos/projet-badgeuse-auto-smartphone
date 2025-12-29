@@ -1,136 +1,99 @@
 package com.example.badgeuse_auto.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
 
 class PresenceRepository(
     private val presenceDao: PresenceDao,
     private val workLocationDao: WorkLocationDao,
-    private val dailySummaryDao: DailySummaryDao,
     private val settingsDao: SettingsDao
 ) {
 
-    // ...
+    /* ---------------- SETTINGS ---------------- */
 
-    fun getSettingsFlow() = settingsDao.getSettingsFlow()
-    // --------------------------------------------------------------------
+    val settings: Flow<SettingsEntity> =
+        settingsDao.getSettingsFlow()
+            .filterNotNull()
 
-    suspend fun updateDailyWorkHours(hours: Int) {
-        val settings = settingsDao.getSettings() ?: SettingsEntity()
-        settingsDao.insert(settings.copy(dailyWorkHours = hours))
-    }
-    // --------------------------------------------------------------------
-    val allPresences: Flow<List<PresenceEntry>> = presenceDao.getAllPresences()
-
-    fun getPresencesBetween(from: Long, to: Long): Flow<List<PresenceEntry>> {
-        return presenceDao.getBetween(from, to)
+    suspend fun saveSettings(settings: SettingsEntity) {
+        settingsDao.insertOrUpdate(settings)
     }
 
-    suspend fun insertPresence(entry: PresenceEntry) {
-        // 1) enregistrer la présence
+    /* ---------------- PRESENCES ---------------- */
+
+    fun getAllPresences(): Flow<List<PresenceEntity>> =
+        presenceDao.getAllPresences()
+
+    suspend fun getCurrentPresence(): PresenceEntity? =
+        presenceDao.getCurrentPresence()
+
+    suspend fun insertPresence(entry: PresenceEntity): Long =
         presenceDao.insert(entry)
 
-        // 2) recalculer automatiquement le résumé du jour
-        val dayStart = computeStartOfDay(entry.timestamp)
-        recomputeAndSaveDailySummary(dayStart)
-    }
-
-    suspend fun updatePresence(entry: PresenceEntry) {
+    suspend fun updatePresence(entry: PresenceEntity) =
         presenceDao.update(entry)
-        recomputeAndSaveDailySummary(computeStartOfDay(entry.timestamp))
-    }
 
-    suspend fun deletePresence(entry: PresenceEntry) {
+    suspend fun deletePresence(entry: PresenceEntity) =
         presenceDao.delete(entry)
-        recomputeAndSaveDailySummary(computeStartOfDay(entry.timestamp))
-    }
 
-    // --------------------------------------------------------------------
-    // DAILY SUMMARY API
-    // --------------------------------------------------------------------
+    suspend fun getPresencesBetween(
+        start: Long,
+        end: Long
+    ): List<PresenceEntity> =
+        presenceDao.getPresencesBetween(start, end)
 
-    fun getAllSummaries(): Flow<List<DailyWorkSummary>> =
-        dailySummaryDao.getAllSummaries()
+    /* ---------------- WORK LOCATIONS ---------------- */
 
-    fun getSummariesBetween(from: Long, to: Long): Flow<List<DailyWorkSummary>> =
-        dailySummaryDao.getSummariesBetween(from, to)
+    fun getAllWorkLocations(): Flow<List<WorkLocationEntity>> =
+        workLocationDao.getActiveLocations()
 
-    suspend fun getSummariesBetweenList(from: Long, to: Long): List<DailyWorkSummary> =
-        dailySummaryDao.getSummariesBetweenList(from, to)
+    suspend fun getAllWorkLocationsOnce(): List<WorkLocationEntity> =
+        workLocationDao.getActiveLocationsOnce()
 
+    suspend fun addWorkLocation(location: WorkLocationEntity): Long =
+        workLocationDao.insert(location)
 
-    // Recompute full day summary (called after each insert)
-    suspend fun recomputeAndSaveDailySummary(dayStart: Long) {
-        val dayEnd = dayStart + 24 * 60 * 60 * 1000L - 1
+    suspend fun updateWorkLocation(location: WorkLocationEntity) =
+        workLocationDao.update(location)
 
-        // Charger toutes les entrées du jour
-        val entries = presenceDao.getBetweenList(dayStart, dayEnd)
+    suspend fun deleteWorkLocation(location: WorkLocationEntity) =
+        workLocationDao.delete(location)
 
-        // Calculer les minutes
-        val totalMinutes = computeTotalMinutesFromEntries(entries)
+    /* ---------------- AUTO GEOFENCE ---------------- */
 
-        // Sauvegarder/updater le résumé
-        val summary = DailyWorkSummary(dayStart = dayStart, totalMinutes = totalMinutes)
-        dailySummaryDao.upsert(summary)
-    }
+    suspend fun autoEvent(
+        isEnter: Boolean,
+        workLocation: WorkLocationEntity
+    ): String {
 
+        val now = System.currentTimeMillis()
+        val currentPresence = getCurrentPresence()
 
-    // --------------------------------------------------------------------
-    // WORK LOCATION API
-    // --------------------------------------------------------------------
-    suspend fun saveWorkLocation(location: WorkLocationEntity) {
-        workLocationDao.saveLocation(location)
-    }
-
-    suspend fun getWorkLocation(): WorkLocationEntity? {
-        return workLocationDao.getLocation()
-    }
-
-    suspend fun deleteWorkLocation() {
-        workLocationDao.deleteLocation()
-    }
-
-
-    // --------------------------------------------------------------------
-    // INTERNAL HELPERS
-    // --------------------------------------------------------------------
-
-    private fun computeStartOfDay(timestamp: Long): Long {
-        val cal = java.util.Calendar.getInstance()
-        cal.timeInMillis = timestamp
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        cal.set(java.util.Calendar.MINUTE, 0)
-        cal.set(java.util.Calendar.SECOND, 0)
-        cal.set(java.util.Calendar.MILLISECOND, 0)
-        return cal.timeInMillis
-    }
-
-    private fun computeTotalMinutesFromEntries(entries: List<PresenceEntry>): Int {
-        var totalMinutes = 0
-        var lastEntryTime: Long? = null
-        var lastType: String? = null
-
-        // Assurer un tri correct
-        for (entry in entries.sortedBy { it.timestamp }) {
-
-            if (entry.type == "ENTREE") {
-                lastEntryTime = entry.timestamp
-                lastType = "ENTREE"
+        return if (isEnter) {
+            if (currentPresence != null) {
+                "Déjà présent sur un lieu"
+            } else {
+                insertPresence(
+                    PresenceEntity(
+                        workLocationId = workLocation.id,
+                        enterTime = now,
+                        enterType = "AUTO"
+                    )
+                )
+                "Arrivée automatique : ${workLocation.name}"
             }
-            else if (entry.type == "SORTIE" && lastType == "ENTREE" && lastEntryTime != null) {
-                val diff = entry.timestamp - lastEntryTime
-                totalMinutes += (diff / 60000).toInt()
-                lastEntryTime = null
-                lastType = "SORTIE"
+        } else {
+            if (currentPresence == null) {
+                "Aucune présence en cours"
+            } else {
+                updatePresence(
+                    currentPresence.copy(
+                        exitTime = now,
+                        exitType = "AUTO"
+                    )
+                )
+                "Départ automatique : ${workLocation.name}"
             }
         }
-
-        // Si entrée sans sortie → compter jusqu'à la fin du jour
-        if (lastType == "ENTREE" && lastEntryTime != null) {
-            val dayEnd = computeStartOfDay(lastEntryTime) + 24*60*60*1000L - 1
-            val diff = dayEnd - lastEntryTime
-            if (diff > 0) totalMinutes += (diff / 60000).toInt()
-        }
-
-        return totalMinutes
     }
 }

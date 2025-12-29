@@ -1,37 +1,47 @@
 package com.example.badgeuse_auto.data
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.Query
+import androidx.room.*
 import kotlinx.coroutines.flow.Flow
-import androidx.room.Update
-import androidx.room.Delete
-
 
 @Dao
 interface PresenceDao {
 
+    // 🔄 Toutes les présences
+    @Query("""
+        SELECT * FROM presences
+        ORDER BY enterTime DESC
+    """)
+    fun getAllPresences(): Flow<List<PresenceEntity>>
+
+    // ▶️ Présence en cours (non clôturée)
+    @Query("""
+        SELECT * FROM presences
+        WHERE exitTime IS NULL
+        ORDER BY enterTime DESC
+        LIMIT 1
+    """)
+    suspend fun getCurrentPresence(): PresenceEntity?
+
+    // 📆 Présences entre deux dates
+    @Query("""
+        SELECT * FROM presences
+        WHERE enterTime BETWEEN :from AND :to
+        ORDER BY enterTime ASC
+    """)
+    suspend fun getPresencesBetween(
+        from: Long,
+        to: Long
+    ): List<PresenceEntity>
+
+    // ➕ INSERT
     @Insert
-    suspend fun insert(entry: PresenceEntry)
+    suspend fun insert(presence: PresenceEntity): Long
 
-    @Query("SELECT * FROM presence_table ORDER BY timestamp DESC")
-    fun getAllPresences(): Flow<List<PresenceEntry>>
-
-    @Query("SELECT * FROM presence_table WHERE timestamp BETWEEN :from AND :to ORDER BY timestamp ASC")
-    fun getBetween(from: Long, to: Long): Flow<List<PresenceEntry>>
-
-    // NEW: suspend version returning a list (useful for recomputation)
-    @Query("SELECT * FROM presence_table WHERE timestamp BETWEEN :from AND :to ORDER BY timestamp ASC")
-    suspend fun getBetweenList(from: Long, to: Long): List<PresenceEntry>
-
-    // ⭐ NOUVEAU — obtenir la dernière entrée
-    @Query("SELECT * FROM presence_table ORDER BY timestamp DESC LIMIT 1")
-    suspend fun getLast(): PresenceEntry?
-
+    // ✏️ UPDATE
     @Update
-    suspend fun update(entry: PresenceEntry)
+    suspend fun update(presence: PresenceEntity)
 
+    // ❌ DELETE
     @Delete
-    suspend fun delete(entry: PresenceEntry)
-
+    suspend fun delete(presence: PresenceEntity)
 }

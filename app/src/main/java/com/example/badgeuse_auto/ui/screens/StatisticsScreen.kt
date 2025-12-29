@@ -1,7 +1,9 @@
 package com.example.badgeuse_auto.ui.screens
 
+import android.app.DatePickerDialog
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +18,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import com.example.badgeuse_auto.data.DailyWorkSummary
 import com.example.badgeuse_auto.data.PresenceViewModel
 import com.example.badgeuse_auto.data.SettingsEntity
 import com.example.badgeuse_auto.utils.CsvExportUtils
@@ -24,6 +25,15 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import com.example.badgeuse_auto.ui.utils.formatMinutes
+import com.example.badgeuse_auto.data.DailyStat
+import com.example.badgeuse_auto.export.ExportHeader
+import androidx.compose.material.icons.filled.PictureAsPdf
+import com.example.badgeuse_auto.export.PdfExportUtils
+
+
+
+
 
 /* ---------------- SCREEN ---------------- */
 
@@ -36,22 +46,47 @@ fun StatisticsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val allSummaries by viewModel.allDailySummaries.collectAsState()
-    val settings by viewModel.settings.collectAsState(initial = SettingsEntity())
+    // ✅ SETTINGS (UNE SEULE FOIS)
+    val settings by viewModel.settings.collectAsState()
 
     val dailyWorkMinutes = settings.dailyWorkHours * 60
 
     var selectedPeriod by remember { mutableStateOf(QuickPeriod.THIS_WEEK) }
-    var filtered by remember { mutableStateOf<List<DailyWorkSummary>>(emptyList()) }
+    var customStart by remember { mutableStateOf<Long?>(null) }
+    var customEnd by remember { mutableStateOf<Long?>(null) }
 
-    LaunchedEffect(selectedPeriod) {
-        val (s, e) = computePeriod(selectedPeriod)
-        filtered = viewModel.loadSummariesBetween(s, e)
+    // ✅ PÉRIODE (AVANT EXPORT)
+    val (start, end) = remember(selectedPeriod, customStart, customEnd) {
+        when (selectedPeriod) {
+            QuickPeriod.CUSTOM ->
+                if (customStart != null && customEnd != null)
+                    customStart!! to customEnd!!
+                else 0L to 0L
+            else -> computePeriod(selectedPeriod)
+        }
     }
 
-    val totalMinutes = filtered.sumOf { it.totalMinutes }
+    // ✅ STATS
+    val stats by viewModel
+        .dailyStatsBetween(start, end)
+        .collectAsState(initial = emptyList())
+
+    val totalMinutes = stats.sumOf { it.totalMinutes }
     val overtimeMinutes =
-        (totalMinutes - filtered.size * dailyWorkMinutes).coerceAtLeast(0)
+        (totalMinutes - stats.size * dailyWorkMinutes).coerceAtLeast(0)
+
+    // ✅ HEADER EXPORT (MAINTENANT OK)
+    val exportHeader = remember(settings, start, end) {
+        ExportHeader(
+            employeeName = settings.employeeName ?: "",
+            employeeAddress = settings.employeeAddress ?: "",
+            employerName = settings.employerName ?: "",
+            employerAddress = settings.employerAddress ?: "",
+            periodStart = start,
+            periodEnd = end,
+            city = settings.city ?: "Paris"
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -77,8 +112,8 @@ fun StatisticsScreen(
 
             item {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     StatCard(
                         title = "Temps total",
@@ -103,11 +138,34 @@ fun StatisticsScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium
                         )
+
                         Spacer(Modifier.height(8.dp))
+
                         QuickFilterDropdown(
                             selectedPeriod = selectedPeriod,
-                            onPeriodSelected = { selectedPeriod = it }
+                            onPeriodSelected = {
+                                selectedPeriod = it
+                                if (it != QuickPeriod.CUSTOM) {
+                                    customStart = null
+                                    customEnd = null
+                                }
+                            }
                         )
+
+                        if (selectedPeriod == QuickPeriod.CUSTOM) {
+                            Spacer(Modifier.height(12.dp))
+                            CustomDatePicker(
+                                label = "Date de début",
+                                date = customStart,
+                                onDateSelected = { customStart = it }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            CustomDatePicker(
+                                label = "Date de fin",
+                                date = customEnd,
+                                onDateSelected = { customEnd = it + 86_399_999L }
+                            )
+                        }
                     }
                 }
             }
@@ -122,89 +180,149 @@ fun StatisticsScreen(
                 )
             }
 
-            items(filtered) { summary ->
-                DaySummaryCard(summary)
+            items(stats) { stat ->
+                DaySummaryCard(stat)
             }
 
             /* ---------- EXPORT ---------- */
 
             item {
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = filtered.isNotEmpty(),
-                    onClick = {
-                        scope.launch {
-                            val file = CsvExportUtils.exportSummariesToCsv(context, filtered)
-                            shareCsv(context, file)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = stats.isNotEmpty(),
+                        onClick = {
+                            scope.launch {
+                                val file = CsvExportUtils.exportDailyStatsToCsv(
+                                    context = context,
+                                    stats = stats,
+                                    periodStart = start,
+                                    periodEnd = end
+                                )
+
+                                shareCsv(context, file)
+                            }
                         }
+                    ) {
+                        Icon(Icons.Default.FileDownload, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Exporter en CSV")
                     }
-                ) {
-                    Icon(Icons.Default.FileDownload, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Exporter en CSV")
+
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = stats.isNotEmpty(),
+                        onClick = {
+                            scope.launch {
+                                PdfExportUtils.exportStatisticsPdf(
+                                    context = context,
+                                    header = exportHeader,
+                                    stats = stats,
+                                    totalMinutes = totalMinutes
+                                )
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.PictureAsPdf, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Exporter en PDF")
+                    }
                 }
             }
         }
     }
 }
 
+
 /* ---------------- UI COMPONENTS ---------------- */
 
 @Composable
-fun StatCard(
-    title: String,
-    value: String,
-    modifier: Modifier = Modifier
-) {
-    Card(modifier = modifier) {
+fun StatCard(title: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier) {
         Column(
             Modifier.padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(title)
             Spacer(Modifier.height(4.dp))
-            Text(
-                value,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
+            Text(value, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-fun DaySummaryCard(summary: DailyWorkSummary) {
+fun DaySummaryCard(stat: DailyStat) {
     val sdf = remember { SimpleDateFormat("EEEE dd/MM", Locale.getDefault()) }
 
     Card {
-        Row(
+        Column(
             Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(16.dp)
         ) {
-            Column {
-                Text(
-                    sdf.format(Date(summary.dayStart)),
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    "Temps travaillé",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
             Text(
-                formatMinutes(summary.totalMinutes),
+                sdf.format(Date(stat.dayStart)),
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                "Lieu : ${stat.workLocationName}",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                formatMinutes(stat.totalMinutes),
                 fontWeight = FontWeight.Bold
             )
         }
     }
 }
 
-/* ---------------- HELPERS ---------------- */
 
-private fun formatMinutes(minutes: Int): String =
-    "${minutes / 60}h ${minutes % 60}min"
+/* ---------------- DATE PICKER ---------------- */
+
+@Composable
+fun CustomDatePicker(
+    label: String,
+    date: Long?,
+    onDateSelected: (Long) -> Unit
+) {
+    val context = LocalContext.current
+    val calendar = remember { Calendar.getInstance() }
+
+    if (date != null) calendar.timeInMillis = date
+
+    val formatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                DatePickerDialog(
+                    context,
+                    { _, year, month, day ->
+                        calendar.set(year, month, day, 0, 0, 0)
+                        calendar.set(Calendar.MILLISECOND, 0)
+                        onDateSelected(calendar.timeInMillis)
+                    },
+                    calendar.get(Calendar.YEAR),
+                    calendar.get(Calendar.MONTH),
+                    calendar.get(Calendar.DAY_OF_MONTH)
+                ).show()
+            }
+    ) {
+        OutlinedTextField(
+            value = date?.let { formatter.format(Date(it)) } ?: "",
+            onValueChange = {},
+            enabled = false, // 🔑 IMPORTANT
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+
+/* ---------------- HELPERS ---------------- */
 
 private fun shareCsv(context: Context, file: File) {
     val uri = FileProvider.getUriForFile(
@@ -219,47 +337,64 @@ private fun shareCsv(context: Context, file: File) {
     }
     context.startActivity(Intent.createChooser(intent, "Partager CSV"))
 }
+
+/* ---------------- PERIODS ---------------- */
+
 enum class QuickPeriod(val label: String) {
     THIS_WEEK("Cette semaine"),
     LAST_WEEK("Semaine précédente"),
     THIS_MONTH("Ce mois"),
-    LAST_MONTH("Mois précédent")
+    LAST_MONTH("Mois précédent"),
+    CUSTOM("Personnalisé")
 }
+
 private fun computePeriod(period: QuickPeriod): Pair<Long, Long> {
-    val c = Calendar.getInstance()
+    val c = Calendar.getInstance().apply {
+        firstDayOfWeek = Calendar.MONDAY
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
 
     return when (period) {
+
         QuickPeriod.THIS_WEEK -> {
             c.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
             val start = c.timeInMillis
-            c.add(Calendar.DAY_OF_WEEK, 6)
-            start to (c.timeInMillis + 86_399_999L)
+            val end = start + 7 * 86_400_000L - 1
+            start to end
         }
 
         QuickPeriod.LAST_WEEK -> {
-            c.add(Calendar.WEEK_OF_YEAR, -1)
             c.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+            c.add(Calendar.WEEK_OF_YEAR, -1)
             val start = c.timeInMillis
-            c.add(Calendar.DAY_OF_WEEK, 6)
-            start to (c.timeInMillis + 86_399_999L)
+            val end = start + 7 * 86_400_000L - 1
+            start to end
         }
 
         QuickPeriod.THIS_MONTH -> {
             c.set(Calendar.DAY_OF_MONTH, 1)
             val start = c.timeInMillis
-            c.set(Calendar.DAY_OF_MONTH, c.getActualMaximum(Calendar.DAY_OF_MONTH))
-            start to (c.timeInMillis + 86_399_999L)
+            c.add(Calendar.MONTH, 1)
+            val end = c.timeInMillis - 1
+            start to end
         }
 
         QuickPeriod.LAST_MONTH -> {
-            c.add(Calendar.MONTH, -1)
             c.set(Calendar.DAY_OF_MONTH, 1)
+            c.add(Calendar.MONTH, -1)
             val start = c.timeInMillis
-            c.set(Calendar.DAY_OF_MONTH, c.getActualMaximum(Calendar.DAY_OF_MONTH))
-            start to (c.timeInMillis + 86_399_999L)
+            c.add(Calendar.MONTH, 1)
+            val end = c.timeInMillis - 1
+            start to end
         }
+
+        QuickPeriod.CUSTOM -> 0L to 0L
     }
 }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuickFilterDropdown(
@@ -268,10 +403,7 @@ fun QuickFilterDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
-    ) {
+    ExposedDropdownMenuBox(expanded, { expanded = !expanded }) {
         OutlinedTextField(
             value = selectedPeriod.label,
             onValueChange = {},
@@ -280,21 +412,15 @@ fun QuickFilterDropdown(
             trailingIcon = {
                 ExposedDropdownMenuDefaults.TrailingIcon(expanded)
             },
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth()
+            modifier = Modifier.menuAnchor().fillMaxWidth()
         )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            QuickPeriod.values().forEach { period ->
+        ExposedDropdownMenu(expanded, { expanded = false }) {
+            QuickPeriod.values().forEach {
                 DropdownMenuItem(
-                    text = { Text(period.label) },
+                    text = { Text(it.label) },
                     onClick = {
                         expanded = false
-                        onPeriodSelected(period)
+                        onPeriodSelected(it)
                     }
                 )
             }

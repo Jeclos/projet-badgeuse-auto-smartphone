@@ -1,26 +1,41 @@
 package com.example.badgeuse_auto.data
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
+import androidx.room.*
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WorkLocationDao {
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun saveLocation(location: WorkLocationEntity)
+    @Insert
+    suspend fun insert(location: WorkLocationEntity): Long
 
-    @Query("SELECT * FROM work_location WHERE id = 1 LIMIT 1")
-    suspend fun getLocation(): WorkLocationEntity?
+    @Update
+    suspend fun update(location: WorkLocationEntity)
 
-    @Query("DELETE FROM work_location")
-    suspend fun deleteLocation()
+    @Delete
+    suspend fun delete(location: WorkLocationEntity)
+
+    @Query("""
+        SELECT * FROM work_locations
+        WHERE isActive = 1
+        ORDER BY name ASC
+    """)
+    fun getActiveLocations(): Flow<List<WorkLocationEntity>>
+
+    @Query("""
+        SELECT * FROM work_locations
+        ORDER BY name ASC
+    """)
+    suspend fun getAllLocations(): List<WorkLocationEntity>
+
+    @Query("""
+        SELECT * FROM work_locations
+        WHERE id = :id
+        LIMIT 1
+    """)
+    suspend fun getById(id: Long): WorkLocationEntity?
+    @Query("SELECT * FROM work_locations WHERE isActive = 1")
+    suspend fun getActiveLocationsOnce(): List<WorkLocationEntity>
+
+
 }
-
-
-
-
-
-
-

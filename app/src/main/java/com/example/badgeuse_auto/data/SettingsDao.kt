@@ -18,4 +18,14 @@ interface SettingsDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(settings: SettingsEntity)
+
+    @Query("UPDATE settings SET appStyle = :style WHERE id = 1")
+    suspend fun updateAppStyle(style: String)
+
+    @Query("UPDATE settings SET themeMode = :mode WHERE id = 1")
+    suspend fun updateThemeMode(mode: ThemeMode)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(settings: SettingsEntity)
 }
+

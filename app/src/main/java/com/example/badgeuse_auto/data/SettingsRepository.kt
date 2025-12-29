@@ -1,6 +1,9 @@
 package com.example.badgeuse_auto.data
 
+import com.example.badgeuse_auto.ui.theme.AppStyle
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
+
 
 class SettingsRepository(
     private val settingsDao: SettingsDao
@@ -11,6 +14,17 @@ class SettingsRepository(
     // --------------------------------------------------
     suspend fun getSettings(): SettingsEntity {
         return settingsDao.getSettings() ?: SettingsEntity()
+    }
+    fun observeSettings(): Flow<SettingsEntity> =
+        settingsDao.getSettingsFlow().filterNotNull()
+
+    suspend fun updateAppStyle(style: AppStyle) {
+        settingsDao.updateAppStyle(style.name)
+    }
+
+
+    suspend fun updateThemeMode(mode: ThemeMode) {
+        settingsDao.updateThemeMode(mode)
     }
 
     // --------------------------------------------------
