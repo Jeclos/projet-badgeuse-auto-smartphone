@@ -17,9 +17,16 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
 
         val event = GeofencingEvent.fromIntent(intent)
         if (event == null || event.hasError()) {
-            Log.e("GEOFENCE", "Erreur GeofencingEvent")
+            Log.e("GEOFENCE", "Geofence error")
             return
         }
+
+        Log.d("GEOFENCE", "Transition: ${event.geofenceTransition}")
+
+        if (
+            event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_ENTER &&
+            event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_EXIT
+        ) return
 
         val geofence = event.triggeringGeofences?.firstOrNull() ?: return
         val workLocationId = geofence.requestId.toLongOrNull() ?: return
@@ -27,16 +34,8 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
         val isEntering =
             event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER
 
-        if (
-            event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_ENTER &&
-            event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_EXIT
-        ) {
-            return
-        }
-
         val db = PresenceDatabase.getDatabase(context)
 
-        // ✅ Repository SANS DailySummaryDao
         val repo = PresenceRepository(
             presenceDao = db.presenceDao(),
             workLocationDao = db.workLocationDao(),
@@ -54,11 +53,7 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
             )
 
             withContext(Dispatchers.Main) {
-                Toast.makeText(
-                    context,
-                    msg,
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
             }
         }
     }

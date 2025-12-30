@@ -1,9 +1,11 @@
 package com.example.badgeuse_auto
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.badgeuse_auto.data.*
 import com.example.badgeuse_auto.location.GeofenceManager
+import com.example.badgeuse_auto.location.GeofenceService
 import com.example.badgeuse_auto.ui.location.LocationViewModel
 import com.example.badgeuse_auto.ui.navigation.RootNav
 import com.example.badgeuse_auto.ui.theme.AppStyle
@@ -25,11 +28,7 @@ import androidx.compose.runtime.getValue
 
 class MainActivity : ComponentActivity() {
 
-    /* ---------------- DATABASE ---------------- */
-
     private val db by lazy { PresenceDatabase.getDatabase(this) }
-
-    /* ---------------- REPOSITORY ---------------- */
 
     private val repo by lazy {
         PresenceRepository(
@@ -39,8 +38,6 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    /* ---------------- VIEWMODELS ---------------- */
-
     private val presenceVM: PresenceViewModel by viewModels {
         PresenceViewModelFactory(repo)
     }
@@ -49,10 +46,7 @@ class MainActivity : ComponentActivity() {
         SettingsViewModelFactory(SettingsRepository(db.settingsDao()))
     }
 
-    // 👉 LocationViewModel sans factory custom (cohérent avec ton projet)
     private val locationVM: LocationViewModel by viewModels()
-
-    /* ---------------- GEOFENCE ---------------- */
 
     private lateinit var geofenceManager: GeofenceManager
 
@@ -60,7 +54,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         enableEdgeToEdge()
-
         geofenceManager = GeofenceManager(this)
 
         requestLocationPermissions()
@@ -86,11 +79,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /* ---------------- PERMISSIONS ---------------- */
-
     private fun requestLocationPermissions() {
 
-        // 1️⃣ FINE LOCATION
         if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -104,7 +94,6 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // 2️⃣ BACKGROUND LOCATION (Android 10+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
             ActivityCompat.checkSelfPermission(
                 this,
@@ -119,7 +108,9 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // ✅ Toutes les permissions sont OK
+        Log.d("GEOFENCE", "Permissions OK")
+
+        startGeofenceService()
         startGeofences()
     }
 
@@ -128,28 +119,27 @@ class MainActivity : ComponentActivity() {
         permissions: Array<String>,
         grantResults: IntArray
     ) {
-        super.onRequestPermissionsResult(
-            requestCode,
-            permissions,
-            grantResults
-        )
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-        if (grantResults.isEmpty() ||
-            grantResults.any { it != PackageManager.PERMISSION_GRANTED }
-        ) {
-            return
-        }
-
-        // Re-vérifie le flow (FINE → BACKGROUND → OK)
+        if (grantResults.any { it != PackageManager.PERMISSION_GRANTED }) return
         requestLocationPermissions()
     }
 
-    /* ---------------- GEOFENCE ---------------- */
+    private fun startGeofenceService() {
+        val intent = Intent(this, GeofenceService::class.java)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
 
     private fun startGeofences() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 presenceVM.workLocations.collect { locations ->
+                    Log.d("GEOFENCE", "Register ${locations.size} geofences")
                     geofenceManager.clearGeofences()
                     geofenceManager.registerGeofences(locations)
                 }
