@@ -1,10 +1,11 @@
 package com.example.badgeuse_auto.location
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.app.PendingIntent
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import com.example.badgeuse_auto.WorkGeofenceReceiver
 import com.example.badgeuse_auto.data.WorkLocationEntity
@@ -17,20 +18,18 @@ class GeofenceManager(
     private val geofencingClient =
         LocationServices.getGeofencingClient(context)
 
-    // 🔔 PendingIntent UNIQUE
     private val geofencePendingIntent: PendingIntent by lazy {
         val intent = Intent(context, WorkGeofenceReceiver::class.java)
         PendingIntent.getBroadcast(
             context,
             0,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE // 🔥 OBLIGATOIRE
         )
     }
 
-    // 🔨 Construction d'une geofence
-    private fun buildGeofence(location: WorkLocationEntity): Geofence {
-        return Geofence.Builder()
+    private fun buildGeofence(location: WorkLocationEntity): Geofence =
+        Geofence.Builder()
             .setRequestId(location.id.toString())
             .setCircularRegion(
                 location.latitude,
@@ -43,17 +42,23 @@ class GeofenceManager(
             )
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .build()
-    }
 
-    // 📦 Enregistrement de toutes les geofences actives
     fun registerGeofences(locations: List<WorkLocationEntity>) {
 
-        if (ActivityCompat.checkSelfPermission(
+        val fineGranted =
+            ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            android.util.Log.e("GEOFENCE", "Permission FINE_LOCATION absente")
+            ) == PackageManager.PERMISSION_GRANTED
+
+        val backgroundGranted =
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+        if (!fineGranted || !backgroundGranted) {
+            Log.e("GEOFENCE", "❌ Permissions location insuffisantes")
             return
         }
 
@@ -62,7 +67,7 @@ class GeofenceManager(
             .map { buildGeofence(it) }
 
         if (geofences.isEmpty()) {
-            android.util.Log.w("GEOFENCE", "Aucune geofence active")
+            Log.w("GEOFENCE", "⚠ Aucun geofence actif")
             return
         }
 
@@ -71,28 +76,16 @@ class GeofenceManager(
             .addGeofences(geofences)
             .build()
 
-        // 🔁 nettoyage avant ajout
-        geofencingClient.removeGeofences(geofencePendingIntent)
-            .addOnCompleteListener {
-
-                geofencingClient.addGeofences(request, geofencePendingIntent)
-                    .addOnSuccessListener {
-                        android.util.Log.d(
-                            "GEOFENCE",
-                            "Geofences enregistrées : ${geofences.size}"
-                        )
-                    }
-                    .addOnFailureListener { e ->
-                        android.util.Log.e(
-                            "GEOFENCE",
-                            "Erreur ajout geofence",
-                            e
-                        )
-                    }
+        geofencingClient
+            .addGeofences(request, geofencePendingIntent)
+            .addOnSuccessListener {
+                Log.d("GEOFENCE", "✅ Geofences enregistrées")
+            }
+            .addOnFailureListener { e ->
+                Log.e("GEOFENCE", "❌ Erreur ajout geofences", e)
             }
     }
 
-    // ❌ Suppression complète (rebuild propre)
     fun clearGeofences() {
         geofencingClient.removeGeofences(geofencePendingIntent)
     }

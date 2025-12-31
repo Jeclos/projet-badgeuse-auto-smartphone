@@ -3,28 +3,24 @@ package com.example.badgeuse_auto
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.core.app.ActivityCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.example.badgeuse_auto.data.*
-import com.example.badgeuse_auto.location.GeofenceManager
 import com.example.badgeuse_auto.location.GeofenceService
 import com.example.badgeuse_auto.ui.location.LocationViewModel
 import com.example.badgeuse_auto.ui.navigation.RootNav
 import com.example.badgeuse_auto.ui.theme.AppStyle
 import com.example.badgeuse_auto.ui.theme.BadgeuseTheme
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 
 class MainActivity : ComponentActivity() {
 
@@ -48,14 +44,9 @@ class MainActivity : ComponentActivity() {
 
     private val locationVM: LocationViewModel by viewModels()
 
-    private lateinit var geofenceManager: GeofenceManager
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         enableEdgeToEdge()
-        geofenceManager = GeofenceManager(this)
-
         requestLocationPermissions()
 
         setContent {
@@ -80,7 +71,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestLocationPermissions() {
-
         if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -94,40 +84,26 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
             ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_BACKGROUND_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
-                REQ_BACKGROUND
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", packageName, null)
             )
+            startActivity(intent)
             return
         }
 
-        Log.d("GEOFENCE", "Permissions OK")
-
         startGeofenceService()
-        startGeofences()
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (grantResults.any { it != PackageManager.PERMISSION_GRANTED }) return
-        requestLocationPermissions()
     }
 
     private fun startGeofenceService() {
         val intent = Intent(this, GeofenceService::class.java)
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
         } else {
@@ -135,20 +111,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startGeofences() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                presenceVM.workLocations.collect { locations ->
-                    Log.d("GEOFENCE", "Register ${locations.size} geofences")
-                    geofenceManager.clearGeofences()
-                    geofenceManager.registerGeofences(locations)
-                }
-            }
-        }
-    }
-
     companion object {
         private const val REQ_FINE = 1001
-        private const val REQ_BACKGROUND = 1002
     }
 }

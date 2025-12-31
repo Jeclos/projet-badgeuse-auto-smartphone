@@ -32,7 +32,7 @@ class PresenceViewModel(
     /* ---------------- WORK LOCATIONS ---------------- */
 
     val workLocations: StateFlow<List<WorkLocationEntity>> =
-        repository.getAllWorkLocations().stateIn(
+        repository.getActiveWorkLocations().stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList()
@@ -65,37 +65,34 @@ class PresenceViewModel(
         }
     }
 
-    /* ---------------- STATS (NIGHT SAFE ✅) ---------------- */
+    /* ---------------- STATS (PRESENCE EN COURS INCLUSE) ---------------- */
 
     fun dailyStatsBetween(from: Long, to: Long): Flow<List<DailyStat>> =
         combine(allPresences, workLocations) { presences, locations ->
 
-            // ⛔ évite les périodes invalides (cause principale stats vides)
             if (from == 0L || to == 0L) return@combine emptyList()
 
             val locationMap = locations.associate { it.id to it.name }
             val result = mutableMapOf<Pair<Long, Long>, Long>()
+            val now = System.currentTimeMillis()
 
-            presences
-                .filter { it.exitTime != null }
-                .forEach { p ->
+            presences.forEach { p ->
 
-                    var current = p.enterTime
-                    val end = p.exitTime!!
+                val end = p.exitTime ?: now
+                var current = p.enterTime
 
-                    while (current < end) {
-                        val dayStart = startOfDay(current)
-                        val dayEnd = dayStart + 86_400_000L
-                        val sliceEnd = minOf(dayEnd, end)
+                while (current < end) {
+                    val dayStart = startOfDay(current)
+                    val dayEnd = dayStart + 86_400_000L
+                    val sliceEnd = minOf(dayEnd, end)
 
-                        val minutes = (sliceEnd - current) / 60_000
+                    val minutes = (sliceEnd - current) / 60_000
+                    val key = dayStart to p.workLocationId
 
-                        val key = dayStart to p.workLocationId
-                        result[key] = (result[key] ?: 0L) + minutes
-
-                        current = sliceEnd
-                    }
+                    result[key] = (result[key] ?: 0L) + minutes
+                    current = sliceEnd
                 }
+            }
 
             result
                 .filter { it.key.first in from..to }
@@ -114,7 +111,7 @@ class PresenceViewModel(
         dailyStatsBetween(startOfToday(), endOfToday())
             .map { list -> list.sumOf { it.totalMinutes } }
 
-    /* ---------------- MANUAL / AUTO ---------------- */
+    /* ---------------- MANUAL ---------------- */
 
     fun manualEntry(workLocationId: Long) {
         viewModelScope.launch {
@@ -164,20 +161,4 @@ class PresenceViewModel(
 
     private fun endOfToday(): Long =
         startOfToday() + 86_399_999L
-
-    private fun distanceMeters(
-        lat1: Double, lon1: Double,
-        lat2: Double, lon2: Double
-    ): Double {
-        val r = 6371000.0
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLon = Math.toRadians(lon2 - lon1)
-
-        val a = sin(dLat / 2).pow(2) +
-                cos(Math.toRadians(lat1)) *
-                cos(Math.toRadians(lat2)) *
-                sin(dLon / 2).pow(2)
-
-        return 2 * r * atan2(sqrt(a), sqrt(1 - a))
-    }
 }

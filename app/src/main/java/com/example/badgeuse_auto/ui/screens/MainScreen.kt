@@ -5,7 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.Work
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,12 +27,13 @@ fun MainScreen(
     onNavigateStats: () -> Unit,
     onNavigateSettings: () -> Unit
 ) {
+
     /* ---------------- STATE ---------------- */
 
     val presences by viewModel.allPresences.collectAsState()
     val workLocations by viewModel.workLocations.collectAsState()
+    val locationUi by locationViewModel.location.collectAsState()
 
-    // 🔑 Map id → nom du lieu (optimisé Compose)
     val locationMap = remember(workLocations) {
         workLocations.associate { it.id to it.name }
     }
@@ -46,6 +47,16 @@ fun MainScreen(
     var clock by remember { mutableStateOf(System.currentTimeMillis()) }
     var showLocationPicker by remember { mutableStateOf(false) }
     var entryToEdit by remember { mutableStateOf<PresenceEntity?>(null) }
+
+    /* ---------------- GPS ---------------- */
+
+    LaunchedEffect(Unit) {
+        locationViewModel.startLocationUpdates()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { locationViewModel.stopLocationUpdates() }
+    }
 
     /* ---------------- CLOCK ---------------- */
 
@@ -87,6 +98,10 @@ fun MainScreen(
     ) { padding ->
 
         AppBackground {
+
+            // 🕰️ HORLOGE FLOTANTE
+            FloatingIllustratedClock()
+
             Column(
                 modifier = Modifier
                     .padding(padding)
@@ -101,35 +116,101 @@ fun MainScreen(
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
 
-                /* -------- CLOCK -------- */
+                /* -------- CARTE RÉCAP + GPS -------- */
 
                 AppCard {
-                    Text(
-                        formatClock(clock),
-                        style = MaterialTheme.typography.headlineMedium
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
 
-                    Text(
-                        if (isWorking) "En cours de travail" else "Hors travail",
-                        color = if (isWorking)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.error
-                    )
+                        /* ---- INFOS TRAVAIL ---- */
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                formatClock(clock),
+                                style = MaterialTheme.typography.headlineMedium
+                            )
 
-                    Text("Temps aujourd’hui : ${formatMinutes(totalMinutesToday)}")
+                            Text(
+                                if (isWorking) "En cours de travail" else "Hors travail",
+                                color = if (isWorking)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.error
+                            )
 
-                    Text(
-                        "Lieu : $currentLocationName",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                            Text("Temps aujourd’hui : ${formatMinutes(totalMinutesToday)}")
+
+                            Text(
+                                "Lieu : $currentLocationName",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+
+                        /* ---- GPS COMPACT ---- */
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+
+                            val gpsIcon = when {
+                                locationUi.error != null ->
+                                    Icons.Outlined.LocationOff
+                                locationUi.latitude != null ->
+                                    Icons.Outlined.GpsFixed
+                                else ->
+                                    Icons.Outlined.GpsNotFixed
+                            }
+
+                            val gpsColor = when {
+                                locationUi.error != null ->
+                                    MaterialTheme.colorScheme.error
+                                locationUi.accuracy != null && locationUi.accuracy!! <= 30 ->
+                                    MaterialTheme.colorScheme.primary
+                                else ->
+                                    MaterialTheme.colorScheme.tertiary
+                            }
+
+                            Icon(
+                                gpsIcon,
+                                contentDescription = null,
+                                tint = gpsColor,
+                                modifier = Modifier.size(24.dp)
+                            )
+
+                            Spacer(Modifier.height(4.dp))
+
+                            Text(
+                                when {
+                                    locationUi.error != null -> "GPS off"
+                                    locationUi.latitude != null -> "GPS ok"
+                                    else -> "GPS…"
+                                },
+                                style = MaterialTheme.typography.labelSmall
+                            )
+
+                            locationUi.accuracy?.let {
+                                Text(
+                                    "± ${it.toInt()} m",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = gpsColor
+                                )
+                            }
+                        }
+                    }
                 }
 
                 /* -------- ACTIONS -------- */
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                    horizontalArrangement = Arrangement.spacedBy(
+                        12.dp,
+                        Alignment.CenterHorizontally
+                    )
                 ) {
 
                     OutlinedButton(
@@ -164,7 +245,8 @@ fun MainScreen(
                     items(presences) { entry ->
                         PresenceCard(
                             entry = entry,
-                            locationName = locationMap[entry.workLocationId] ?: "Lieu inconnu",
+                            locationName = locationMap[entry.workLocationId]
+                                ?: "Lieu inconnu",
                             onEdit = { entryToEdit = it },
                             onDelete = { viewModel.deletePresence(it) }
                         )

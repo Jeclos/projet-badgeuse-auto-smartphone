@@ -1,7 +1,6 @@
 package com.example.badgeuse_auto.ui.components
 
 import android.app.DatePickerDialog
-import android.widget.NumberPicker
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -9,11 +8,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.example.badgeuse_auto.data.PresenceEntity
 import java.text.SimpleDateFormat
 import java.util.*
 
+/* ================================================================ */
+/* EDIT PRESENCE DIALOG                                             */
+/* ================================================================ */
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditPresenceDialog(
     entry: PresenceEntity,
@@ -21,31 +24,23 @@ fun EditPresenceDialog(
     onValidate: (PresenceEntity) -> Unit
 ) {
     val context = LocalContext.current
+    val calendar = remember { Calendar.getInstance() }
 
-    // ✅ ALIGNÉ AVEC PresenceEntity
     var enterTime by remember { mutableStateOf(entry.enterTime) }
     var exitTime by remember { mutableStateOf(entry.exitTime) }
 
-    var showTimePickerForEnter by remember { mutableStateOf(false) }
-    var showTimePickerForExit by remember { mutableStateOf(false) }
+    var showEnterTimePicker by remember { mutableStateOf(false) }
+    var showExitTimePicker by remember { mutableStateOf(false) }
 
-    val calendar = remember { Calendar.getInstance() }
-
-    val dateFormatter = remember {
-        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-    }
-    val timeFormatter = remember {
-        SimpleDateFormat("HH:mm", Locale.getDefault())
-    }
+    val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
+    val timeFormatter = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
 
     fun showDatePicker(current: Long, onSelected: (Long) -> Unit) {
         calendar.timeInMillis = current
         DatePickerDialog(
             context,
-            { _, year, month, day ->
-                calendar.set(Calendar.YEAR, year)
-                calendar.set(Calendar.MONTH, month)
-                calendar.set(Calendar.DAY_OF_MONTH, day)
+            { _, y, m, d ->
+                calendar.set(y, m, d)
                 onSelected(calendar.timeInMillis)
             },
             calendar.get(Calendar.YEAR),
@@ -59,37 +54,45 @@ fun EditPresenceDialog(
         title = { Text("Modifier la présence") },
 
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
 
-                /* -------- ENTRÉE -------- */
-                Text(
-                    text = "Entrée : ${dateFormatter.format(Date(enterTime))} à ${timeFormatter.format(Date(enterTime))}",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showDatePicker(enterTime) { enterTime = it }
-                        }
+                /* ---------------- ENTRÉE ---------------- */
+
+                SectionTitle("Entrée")
+
+                ReadOnlyField(
+                    label = "Date",
+                    value = dateFormatter.format(Date(enterTime)),
+                    onClick = {
+                        showDatePicker(enterTime) { enterTime = it }
+                    }
                 )
 
-                Button(onClick = { showTimePickerForEnter = true }) {
-                    Text("Modifier heure d'entrée")
-                }
+                ReadOnlyField(
+                    label = "Heure",
+                    value = timeFormatter.format(Date(enterTime)),
+                    onClick = { showEnterTimePicker = true }
+                )
 
-                /* -------- SORTIE -------- */
+                /* ---------------- SORTIE ---------------- */
+
                 if (exitTime != null) {
+                    Spacer(Modifier.height(8.dp))
+                    SectionTitle("Sortie")
 
-                    Text(
-                        text = "Sortie : ${dateFormatter.format(Date(exitTime!!))} à ${timeFormatter.format(Date(exitTime!!))}",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showDatePicker(exitTime!!) { exitTime = it }
-                            }
+                    ReadOnlyField(
+                        label = "Date",
+                        value = dateFormatter.format(Date(exitTime!!)),
+                        onClick = {
+                            showDatePicker(exitTime!!) { exitTime = it }
+                        }
                     )
 
-                    Button(onClick = { showTimePickerForExit = true }) {
-                        Text("Modifier heure de sortie")
-                    }
+                    ReadOnlyField(
+                        label = "Heure",
+                        value = timeFormatter.format(Date(exitTime!!)),
+                        onClick = { showExitTimePicker = true }
+                    )
                 }
             }
         },
@@ -114,101 +117,108 @@ fun EditPresenceDialog(
         }
     )
 
-    /* -------- TIME PICKERS -------- */
+    /* ---------------- TIME PICKERS ---------------- */
 
-    if (showTimePickerForEnter) {
-        ClassicTimePickerDialog(
+    if (showEnterTimePicker) {
+        MaterialTimePickerDialog(
             initialTime = enterTime,
-            onDismiss = { showTimePickerForEnter = false },
+            onDismiss = { showEnterTimePicker = false },
             onConfirm = {
                 enterTime = it
-                showTimePickerForEnter = false
+                showEnterTimePicker = false
             }
         )
     }
 
-    if (showTimePickerForExit && exitTime != null) {
-        ClassicTimePickerDialog(
+    if (showExitTimePicker && exitTime != null) {
+        MaterialTimePickerDialog(
             initialTime = exitTime!!,
-            onDismiss = { showTimePickerForExit = false },
+            onDismiss = { showExitTimePicker = false },
             onConfirm = {
                 exitTime = it
-                showTimePickerForExit = false
+                showExitTimePicker = false
             }
         )
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* TIME PICKER                                                         */
-/* ------------------------------------------------------------------ */
+/* ================================================================ */
+/* MATERIAL TIME PICKER (FIABLE & THEME-AWARE)                       */
+/* ================================================================ */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ClassicTimePickerDialog(
+fun MaterialTimePickerDialog(
     initialTime: Long,
     onDismiss: () -> Unit,
     onConfirm: (Long) -> Unit
 ) {
-    val calendar = remember { Calendar.getInstance() }
-    calendar.timeInMillis = initialTime
+    val calendar = remember {
+        Calendar.getInstance().apply { timeInMillis = initialTime }
+    }
 
-    var hour by remember { mutableStateOf(calendar.get(Calendar.HOUR_OF_DAY)) }
-    var minute by remember { mutableStateOf(calendar.get(Calendar.MINUTE)) }
+    val timeState = rememberTimePickerState(
+        initialHour = calendar.get(Calendar.HOUR_OF_DAY),
+        initialMinute = calendar.get(Calendar.MINUTE),
+        is24Hour = true
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Choisir l'heure") },
-
         text = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-
-                AndroidView(
-                    factory = { context ->
-                        NumberPicker(context).apply {
-                            minValue = 0
-                            maxValue = 23
-                            value = hour
-                            setFormatter { String.format("%02d", it) }
-                            setOnValueChangedListener { _, _, new ->
-                                hour = new
-                            }
-                        }
-                    }
-                )
-
-                AndroidView(
-                    factory = { context ->
-                        NumberPicker(context).apply {
-                            minValue = 0
-                            maxValue = 59
-                            value = minute
-                            setFormatter { String.format("%02d", it) }
-                            setOnValueChangedListener { _, _, new ->
-                                minute = new
-                            }
-                        }
-                    }
-                )
-            }
+            TimePicker(state = timeState)
         },
-
         confirmButton = {
             TextButton(onClick = {
-                calendar.set(Calendar.HOUR_OF_DAY, hour)
-                calendar.set(Calendar.MINUTE, minute)
+                calendar.set(Calendar.HOUR_OF_DAY, timeState.hour)
+                calendar.set(Calendar.MINUTE, timeState.minute)
                 onConfirm(calendar.timeInMillis)
             }) {
                 Text("OK")
             }
         },
-
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Annuler")
             }
         }
+    )
+}
+
+/* ================================================================ */
+/* UI HELPERS                                                        */
+/* ================================================================ */
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
+@Composable
+private fun ReadOnlyField(
+    label: String,
+    value: String,
+    onClick: () -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = {},
+        readOnly = true,
+        enabled = true,
+        label = { Text(label) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
     )
 }

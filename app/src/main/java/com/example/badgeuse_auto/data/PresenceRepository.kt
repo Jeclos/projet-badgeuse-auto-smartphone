@@ -12,8 +12,7 @@ class PresenceRepository(
     /* ---------------- SETTINGS ---------------- */
 
     val settings: Flow<SettingsEntity> =
-        settingsDao.getSettingsFlow()
-            .filterNotNull()
+        settingsDao.getSettingsFlow().filterNotNull()
 
     suspend fun saveSettings(settings: SettingsEntity) {
         settingsDao.insertOrUpdate(settings)
@@ -36,15 +35,9 @@ class PresenceRepository(
     suspend fun deletePresence(entry: PresenceEntity) =
         presenceDao.delete(entry)
 
-    suspend fun getPresencesBetween(
-        start: Long,
-        end: Long
-    ): List<PresenceEntity> =
-        presenceDao.getPresencesBetween(start, end)
-
     /* ---------------- WORK LOCATIONS ---------------- */
 
-    fun getAllWorkLocations(): Flow<List<WorkLocationEntity>> =
+    fun getActiveWorkLocations(): Flow<List<WorkLocationEntity>> =
         workLocationDao.getActiveLocations()
 
     suspend fun getAllWorkLocationsOnce(): List<WorkLocationEntity> =
@@ -59,7 +52,7 @@ class PresenceRepository(
     suspend fun deleteWorkLocation(location: WorkLocationEntity) =
         workLocationDao.delete(location)
 
-    /* ---------------- AUTO GEOFENCE ---------------- */
+    /* ---------------- AUTO GEOFENCE (SÉCURISÉ) ---------------- */
 
     suspend fun autoEvent(
         isEnter: Boolean,
@@ -70,6 +63,7 @@ class PresenceRepository(
         val currentPresence = getCurrentPresence()
 
         return if (isEnter) {
+
             if (currentPresence != null) {
                 "Déjà présent sur un lieu"
             } else {
@@ -82,9 +76,13 @@ class PresenceRepository(
                 )
                 "Arrivée automatique : ${workLocation.name}"
             }
+
         } else {
+
             if (currentPresence == null) {
                 "Aucune présence en cours"
+            } else if (currentPresence.workLocationId != workLocation.id) {
+                "EXIT ignoré (lieu différent)"
             } else {
                 updatePresence(
                     currentPresence.copy(
