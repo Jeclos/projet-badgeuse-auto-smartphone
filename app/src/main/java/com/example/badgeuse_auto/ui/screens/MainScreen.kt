@@ -31,7 +31,7 @@ fun MainScreen(
     /* ---------------- STATE ---------------- */
 
     val presences by viewModel.allPresences.collectAsState()
-    val workLocations by viewModel.workLocations.collectAsState()
+    val workLocations by viewModel.allWorkLocations.collectAsState()
     val locationUi by locationViewModel.location.collectAsState()
 
     val locationMap = remember(workLocations) {

@@ -13,6 +13,7 @@ data class SettingsEntity(
     val employerName: String = "",
     val employerAddress: String = "",
     val city: String = "",
+
     val enterDistance: Int = 150,
     val exitDistance: Int = 150,
 
@@ -25,10 +26,23 @@ data class SettingsEntity(
     val lunchBreakOutside: Boolean = true,
     val lunchBreakDurationMin: Int = 60,
 
-    // 🎨 APP STYLE & THEME
+    /* 🔥 NOUVEAU MODE */
+    val badgeMode: BadgeMode = BadgeMode.OFFICE,
+
+    /* 🔥 MODE DEPOT */
+    val depotStartHour: Int = 7,
+    val depotStartMinute: Int = 0,
+    val depotEndHour: Int = 17,
+    val depotEndMinute: Int = 0,
+
+    /** Peut être négatif ou positif */
+    val depotDailyAdjustMin: Int = 0,
+
+    /* 🎨 UI */
     val appStyle: String = "PRO",
     val themeMode: ThemeMode = ThemeMode.SYSTEM
 )
+
 
 enum class ThemeMode {
     LIGHT, DARK, SYSTEM

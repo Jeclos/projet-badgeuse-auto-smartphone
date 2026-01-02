@@ -15,12 +15,14 @@ interface PresenceDao {
 
     // ▶️ Présence en cours (non clôturée)
     @Query("""
-        SELECT * FROM presences
-        WHERE exitTime IS NULL
-        ORDER BY enterTime DESC
-        LIMIT 1
-    """)
+    SELECT * FROM presences
+    WHERE exitTime IS NULL
+      AND locked = 0
+    ORDER BY enterTime DESC
+    LIMIT 1
+""")
     suspend fun getCurrentPresence(): PresenceEntity?
+
 
     // 📆 Présences entre deux dates
     @Query("""
@@ -33,6 +35,19 @@ interface PresenceDao {
         to: Long
     ): List<PresenceEntity>
 
+    //PROTECTION ANTI “PRÉSENCE ZOMBIE”
+
+    @Query("""
+    UPDATE presences
+    SET
+        exitTime = enterTime,
+        locked = 1
+    WHERE exitTime IS NULL
+      AND enterTime < :limit
+""")
+    suspend fun closeZombiePresences(limit: Long)
+
+
     // ➕ INSERT
     @Insert
     suspend fun insert(presence: PresenceEntity): Long
@@ -44,4 +59,6 @@ interface PresenceDao {
     // ❌ DELETE
     @Delete
     suspend fun delete(presence: PresenceEntity)
+
+
 }

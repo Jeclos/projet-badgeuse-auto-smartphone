@@ -1,7 +1,12 @@
 package com.example.badgeuse_auto.data
 
+import android.util.Log
+import com.example.badgeuse_auto.domain.BadgeModeHandler
+import com.example.badgeuse_auto.domain.DepotBadgeModeHandler
+import com.example.badgeuse_auto.domain.OfficeBadgeModeHandler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNotNull
+import java.util.Calendar
 
 class PresenceRepository(
     private val presenceDao: PresenceDao,
@@ -18,13 +23,16 @@ class PresenceRepository(
         settingsDao.insertOrUpdate(settings)
     }
 
-    /* ---------------- PRESENCES ---------------- */
+    suspend fun getBadgeMode(): BadgeMode =
+        settingsDao.getSettings()?.badgeMode ?: BadgeMode.OFFICE
 
-    fun getAllPresences(): Flow<List<PresenceEntity>> =
-        presenceDao.getAllPresences()
+    /* ---------------- PRESENCES ---------------- */
 
     suspend fun getCurrentPresence(): PresenceEntity? =
         presenceDao.getCurrentPresence()
+
+    fun getAllPresences(): Flow<List<PresenceEntity>> =
+        presenceDao.getAllPresences()
 
     suspend fun insertPresence(entry: PresenceEntity): Long =
         presenceDao.insert(entry)
@@ -35,13 +43,18 @@ class PresenceRepository(
     suspend fun deletePresence(entry: PresenceEntity) =
         presenceDao.delete(entry)
 
+
+
     /* ---------------- WORK LOCATIONS ---------------- */
+
+    fun getAllWorkLocations(): Flow<List<WorkLocationEntity>> =
+        workLocationDao.getAllLocationsFlow()
+
+    suspend fun getAllWorkLocationsOnce(): List<WorkLocationEntity> =
+        workLocationDao.getAllLocations()
 
     fun getActiveWorkLocations(): Flow<List<WorkLocationEntity>> =
         workLocationDao.getActiveLocations()
-
-    suspend fun getAllWorkLocationsOnce(): List<WorkLocationEntity> =
-        workLocationDao.getActiveLocationsOnce()
 
     suspend fun addWorkLocation(location: WorkLocationEntity): Long =
         workLocationDao.insert(location)
@@ -52,7 +65,7 @@ class PresenceRepository(
     suspend fun deleteWorkLocation(location: WorkLocationEntity) =
         workLocationDao.delete(location)
 
-    /* ---------------- AUTO GEOFENCE (SÉCURISÉ) ---------------- */
+    /* ---------------- AUTO GEOFENCE ---------------- */
 
     suspend fun autoEvent(
         isEnter: Boolean,
@@ -60,38 +73,167 @@ class PresenceRepository(
     ): String {
 
         val now = System.currentTimeMillis()
-        val currentPresence = getCurrentPresence()
+        val settings = settingsDao.getSettings()
+            ?: return "Settings manquants"
+
+        // nettoyage sécurité
+        presenceDao.closeZombiePresences(
+            now - 24 * 60 * 60 * 1000L
+        )
+
+        val rawPresence = getCurrentPresence()
+
+        val currentPresence = when (settings.badgeMode) {
+            BadgeMode.OFFICE ->
+                rawPresence?.takeIf { it.enterType != "AUTO_DEPOT" }
+
+            BadgeMode.DEPOT ->
+                rawPresence?.takeIf { it.enterType == "AUTO_DEPOT" }
+        }
+
+        Log.e(
+            "AUTO_EVENT",
+            "mode=${settings.badgeMode} | enter=$isEnter | presence=$currentPresence"
+        )
+
+        // journée déjà verrouillée
+        if (currentPresence?.locked == true) {
+            return "Journée terminée"
+        }
+
+        // badge manuel prioritaire
+        if (currentPresence?.enterType == "MANUAL") {
+            return "Badge manuel actif – auto ignoré"
+        }
+
+        /* ---------------------------------------------------
+           🔒 GESTION FERMETURE MODE DÉPÔT (RÈGLE DÉFINITIVE)
+           --------------------------------------------------- */
+        if (
+            settings.badgeMode == BadgeMode.DEPOT &&
+            currentPresence != null &&
+            currentPresence.exitTime == null &&
+            !isEnter
+        ) {
+
+            val window = computeDepotWindow(
+                currentPresence.enterTime,
+                settings
+            )
+
+            Log.e(
+                "DEPOT_WINDOW",
+                "now=$now | start=${window.start} | end=${window.end}"
+            )
+
+            // ⛔ TOUJOURS INTERDIT DE FERMER DANS LA PLAGE
+            if (now < window.end) {
+
+                // juste mémoriser la sortie
+                presenceDao.update(
+                    currentPresence.copy(
+                        lastDepotExitTime = now
+                    )
+                )
+
+                Log.e("DEPOT", "📝 EXIT dépôt mémorisé à $now")
+                return "Sortie dépôt mémorisée"
+            }
+
+            // ✅ fermeture seulement APRÈS la fin
+            val realEnd = minOf(
+                currentPresence.lastDepotExitTime ?: now,
+                window.end
+            ) + settings.depotDailyAdjustMin * 60_000L
+
+            presenceDao.update(
+                currentPresence.copy(
+                    exitTime = realEnd,
+                    exitType = "AUTO_DEPOT",
+                    locked = true
+                )
+            )
+
+            Log.e("DEPOT", "🔒 Fin auto dépôt à $realEnd")
+            return "Fin de journée dépôt"
+        }
+
+        /* ---------------------------------------------------
+           🚦 DÉLÉGATION HANDLER
+           --------------------------------------------------- */
+
+        val handler: BadgeModeHandler =
+            when (settings.badgeMode) {
+                BadgeMode.OFFICE ->
+                    OfficeBadgeModeHandler(presenceDao)
+
+                BadgeMode.DEPOT ->
+                    DepotBadgeModeHandler(presenceDao, settings)
+            }
 
         return if (isEnter) {
-
-            if (currentPresence != null) {
-                "Déjà présent sur un lieu"
-            } else {
-                insertPresence(
-                    PresenceEntity(
-                        workLocationId = workLocation.id,
-                        enterTime = now,
-                        enterType = "AUTO"
-                    )
-                )
-                "Arrivée automatique : ${workLocation.name}"
-            }
-
+            handler.onEnter(now, workLocation, currentPresence)
         } else {
-
-            if (currentPresence == null) {
-                "Aucune présence en cours"
-            } else if (currentPresence.workLocationId != workLocation.id) {
-                "EXIT ignoré (lieu différent)"
-            } else {
-                updatePresence(
-                    currentPresence.copy(
-                        exitTime = now,
-                        exitType = "AUTO"
-                    )
-                )
-                "Départ automatique : ${workLocation.name}"
-            }
+            handler.onExit(now, workLocation, currentPresence)
         }
     }
 }
+
+/* ---------------------------------------------------
+   🧠 OUTILS TEMPORELS — CYCLE DÉPÔT
+   --------------------------------------------------- */
+
+data class DepotWindow(
+    val start: Long,
+    val end: Long
+)
+private fun computeDepotWindow(
+    referenceTime: Long,
+    settings: SettingsEntity
+): DepotWindow {
+
+    val refCal = Calendar.getInstance().apply {
+        timeInMillis = referenceTime
+    }
+
+    val startMinutes =
+        settings.depotStartHour * 60 + settings.depotStartMinute
+    val endMinutes =
+        settings.depotEndHour * 60 + settings.depotEndMinute
+
+    val refMinutes =
+        refCal.get(Calendar.HOUR_OF_DAY) * 60 +
+                refCal.get(Calendar.MINUTE)
+
+    val startCal = Calendar.getInstance().apply {
+        timeInMillis = referenceTime
+        set(Calendar.HOUR_OF_DAY, settings.depotStartHour)
+        set(Calendar.MINUTE, settings.depotStartMinute)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    val endCal = Calendar.getInstance().apply {
+        timeInMillis = startCal.timeInMillis
+        set(Calendar.HOUR_OF_DAY, settings.depotEndHour)
+        set(Calendar.MINUTE, settings.depotEndMinute)
+    }
+
+    // 🌙 CAS NUIT (22h → 5h)
+    if (endMinutes <= startMinutes) {
+
+        // si on est APRÈS minuit mais AVANT la fin (ex 01:00)
+        if (refMinutes < endMinutes) {
+            startCal.add(Calendar.DAY_OF_MONTH, -1)
+        }
+
+        endCal.add(Calendar.DAY_OF_MONTH, 1)
+    }
+
+    return DepotWindow(
+        start = startCal.timeInMillis,
+        end = endCal.timeInMillis
+    )
+}
+
+

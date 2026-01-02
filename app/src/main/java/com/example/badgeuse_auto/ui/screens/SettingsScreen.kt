@@ -34,15 +34,17 @@ fun SettingsScreen(
     presenceViewModel: PresenceViewModel,
     onBack: () -> Unit
 ) {
-    val scrollState = rememberScrollState()
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
+    val fusedLocationClient =
+        remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    val settings by settingsViewModel.settingsFlow
-        .collectAsState(initial = SettingsEntity())
+    val settings by settingsViewModel.settingsFlow.collectAsState(SettingsEntity())
+    val workLocations by presenceViewModel.allWorkLocations.collectAsState()
 
-    val workLocations by presenceViewModel.workLocations.collectAsState()
 
-    /* ---------- UI STATES ---------- */
+    /* ================= UI STATES ================= */
+
     var enterDistance by remember { mutableStateOf("") }
     var exitDistance by remember { mutableStateOf("") }
     var enterDelay by remember { mutableStateOf("") }
@@ -52,17 +54,32 @@ fun SettingsScreen(
     var lunchOutside by remember { mutableStateOf(true) }
     var lunchDuration by remember { mutableStateOf("") }
 
-    var newWorkName by remember { mutableStateOf("") }
-    var newWorkLat by remember { mutableStateOf("") }
-    var newWorkLon by remember { mutableStateOf("") }
-
     var employeeName by remember { mutableStateOf("") }
     var employeeAddress by remember { mutableStateOf("") }
     var employerName by remember { mutableStateOf("") }
     var employerAddress by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
 
-    /* ---------- LOAD SETTINGS ---------- */
+    var depotStartHour by remember { mutableStateOf("") }
+    var depotStartMinute by remember { mutableStateOf("") }
+    var depotEndHour by remember { mutableStateOf("") }
+    var depotEndMinute by remember { mutableStateOf("") }
+    var depotAdjust by remember { mutableStateOf("") }
+
+    var newWorkName by remember { mutableStateOf("") }
+    var newWorkLat by remember { mutableStateOf("") }
+    var newWorkLon by remember { mutableStateOf("") }
+
+    var editedLocation by remember { mutableStateOf<WorkLocationEntity?>(null) }
+
+    val hasLocationPermission =
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+    /* ================= LOAD SETTINGS ================= */
+
     LaunchedEffect(settings) {
         enterDistance = settings.enterDistance.toString()
         exitDistance = settings.exitDistance.toString()
@@ -78,7 +95,15 @@ fun SettingsScreen(
         employerName = settings.employerName
         employerAddress = settings.employerAddress
         city = settings.city
+
+        depotStartHour = settings.depotStartHour.toString()
+        depotStartMinute = settings.depotStartMinute.toString()
+        depotEndHour = settings.depotEndHour.toString()
+        depotEndMinute = settings.depotEndMinute.toString()
+        depotAdjust = settings.depotDailyAdjustMin.toString()
     }
+
+    /* ================= SCAFFOLD ================= */
 
     Scaffold(
         topBar = {
@@ -111,7 +136,12 @@ fun SettingsScreen(
                             employeeAddress,
                             employerName,
                             employerAddress,
-                            city
+                            city,
+                            depotStartHour.toIntOrNull() ?: settings.depotStartHour,
+                            depotStartMinute.toIntOrNull() ?: settings.depotStartMinute,
+                            depotEndHour.toIntOrNull() ?: settings.depotEndHour,
+                            depotEndMinute.toIntOrNull() ?: settings.depotEndMinute,
+                            depotAdjust.toIntOrNull() ?: settings.depotDailyAdjustMin
                         ) {
                             onBack()
                         }
@@ -136,221 +166,296 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
 
-                /* ---------------- IDENTITÉ ---------------- */
+                /* ================= IDENTITÉ ================= */
+
                 SettingsCard(Icons.Default.Badge, "Identité") {
-                    OutlinedTextField(
-                        value = employeeName,
-                        onValueChange = { employeeName = it },
-                        label = { Text("Nom de l’employé") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = employeeAddress,
-                        onValueChange = { employeeAddress = it },
-                        label = { Text("Adresse de l’employé") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
+                    OutlinedTextField(employeeName, { employeeName = it }, label = { Text("Nom employé") })
+                    OutlinedTextField(employeeAddress, { employeeAddress = it }, label = { Text("Adresse employé") })
                     Divider()
-
-                    OutlinedTextField(
-                        value = employerName,
-                        onValueChange = { employerName = it },
-                        label = { Text("Nom de l’employeur") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = employerAddress,
-                        onValueChange = { employerAddress = it },
-                        label = { Text("Adresse de l’employeur") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = city,
-                        onValueChange = { city = it },
-                        label = { Text("Ville (PDF)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    OutlinedTextField(employerName, { employerName = it }, label = { Text("Nom employeur") })
+                    OutlinedTextField(employerAddress, { employerAddress = it }, label = { Text("Adresse employeur") })
+                    OutlinedTextField(city, { city = it }, label = { Text("Ville (PDF)") })
                 }
 
-                /* ---------------- DÉTECTION ---------------- */
+                /* ================= MODE ================= */
+
+                SettingsCard(Icons.Default.Tune, "Mode de badgeage") {
+                    BadgeMode.values().forEach { mode ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = settings.badgeMode == mode,
+                                onClick = {
+                                    settingsViewModel.setBadgeMode(mode)
+                                    presenceViewModel.onBadgeModeChanged(mode)
+                                }
+                            )
+
+                            Text(
+                                if (mode == BadgeMode.OFFICE)
+                                    "Bureau / Multi-lieux"
+                                else
+                                    "Dépôt / Entrepôt"
+                            )
+                        }
+                    }
+                }
+
+                /* ================= DÉTECTION ================= */
+
                 SettingsCard(Icons.Default.LocationOn, "Détection") {
                     NumberField("Distance entrée (m)", enterDistance) { enterDistance = it }
                     NumberField("Distance sortie (m)", exitDistance) { exitDistance = it }
                 }
 
-                /* ---------------- TEMPORISATION ---------------- */
+                /* ================= TEMPORISATION ================= */
+
                 SettingsCard(Icons.Default.Schedule, "Temporisation") {
                     NumberField("Entrée (sec)", enterDelay) { enterDelay = it }
                     NumberField("Sortie (sec)", exitDelay) { exitDelay = it }
                 }
 
-                /* ---------------- PAUSE ---------------- */
+                /* ================= PAUSE DÉJEUNER ================= */
+
                 SettingsCard(Icons.Default.LunchDining, "Pause déjeuner") {
-                    SwitchRow("Activer la pause", lunchEnabled) { lunchEnabled = it }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Activer la pause", Modifier.weight(1f))
+                        Switch(checked = lunchEnabled, onCheckedChange = { lunchEnabled = it })
+                    }
 
                     if (lunchEnabled) {
-                        RadioGroup(
-                            listOf("À l'extérieur", "Sur place"),
-                            if (lunchOutside) 0 else 1
-                        ) { lunchOutside = it == 0 }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = lunchOutside, onClick = { lunchOutside = true })
+                            Text("À l'extérieur")
+                            Spacer(Modifier.width(16.dp))
+                            RadioButton(selected = !lunchOutside, onClick = { lunchOutside = false })
+                            Text("Sur place")
+                        }
 
                         NumberField("Durée (min)", lunchDuration) { lunchDuration = it }
                     }
                 }
 
-                /* ---------------- LIEUX DE TRAVAIL ---------------- */
+                /* ================= DÉPÔT ================= */
+
+                if (settings.badgeMode == BadgeMode.DEPOT) {
+                    SettingsCard(Icons.Default.Warehouse, "Paramètres du dépôt") {
+
+                        Text("Heures officielles", fontWeight = FontWeight.Medium)
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NumberField("Début (h)", depotStartHour, Modifier.weight(1f)) {
+                                depotStartHour = it
+                            }
+                            NumberField("Début (min)", depotStartMinute, Modifier.weight(1f)) {
+                                depotStartMinute = it
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NumberField("Fin (h)", depotEndHour, Modifier.weight(1f)) {
+                                depotEndHour = it
+                            }
+                            NumberField("Fin (min)", depotEndMinute, Modifier.weight(1f)) {
+                                depotEndMinute = it
+                            }
+                        }
+
+                        Divider()
+
+                        NumberField("Ajustement journalier (min)", depotAdjust) {
+                            depotAdjust = it
+                        }
+
+                        Text(
+                            "Ex: -15 = départ anticipé, +10 = dépassement",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+                /* ================= LIEUX ================= */
+
                 SettingsCard(Icons.Default.Work, "Lieux de travail") {
+
+                    val isDepotMode = settings.badgeMode == BadgeMode.DEPOT
 
                     workLocations.forEach { loc ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
+
                             Column(Modifier.weight(1f)) {
-                                Text(loc.name, fontWeight = FontWeight.Medium)
+                                Text(
+                                    text = loc.name,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (loc.isActive)
+                                        MaterialTheme.colorScheme.onSurface
+                                    else
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                )
+
                                 Text(
                                     "${loc.latitude}, ${loc.longitude}",
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
 
+                            // ✅ ACTIVE / DÉSACTIVE (NE SUPPRIME JAMAIS)
                             Switch(
                                 checked = loc.isActive,
-                                onCheckedChange = {
-                                    presenceViewModel.setWorkLocationActive(loc, it)
+                                onCheckedChange = { isActive ->
+                                    presenceViewModel.setWorkLocationActive(loc, isActive)
                                 }
                             )
 
-                            IconButton(onClick = {
-                                presenceViewModel.deleteWorkLocation(loc)
-                            }) {
-                                Icon(Icons.Default.Delete, null)
+                            IconButton(onClick = { editedLocation = loc }) {
+                                Icon(Icons.Default.Edit, contentDescription = "Modifier")
+                            }
+
+                            // ❌ SUPPRESSION EXPLICITE UNIQUEMENT
+                            IconButton(onClick = { presenceViewModel.deleteWorkLocation(loc) }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Supprimer",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
                             }
                         }
+
                         Divider()
                     }
 
-                    Spacer(Modifier.height(8.dp))
 
+                    // ➕ AJOUT AUTORISÉ
                     OutlinedTextField(
                         value = newWorkName,
                         onValueChange = { newWorkName = it },
-                        label = { Text("Nom du lieu") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("Nom du lieu") }
                     )
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row {
                         OutlinedTextField(
                             value = newWorkLat,
                             onValueChange = { newWorkLat = it },
                             label = { Text("Latitude") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            modifier = Modifier.weight(1f)
                         )
-
                         Spacer(Modifier.width(8.dp))
-
                         OutlinedTextField(
                             value = newWorkLon,
                             onValueChange = { newWorkLon = it },
                             label = { Text("Longitude") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            modifier = Modifier.weight(1f)
                         )
+                    }
 
-                        Spacer(Modifier.width(8.dp))
-
-                        IconButton(
-                            onClick = {
-                                if (ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.ACCESS_FINE_LOCATION
-                                    ) != PackageManager.PERMISSION_GRANTED
-                                ) return@IconButton
-
-                                LocationServices.getFusedLocationProviderClient(context)
-                                    .getCurrentLocation(
-                                        com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY,
-                                        null
-                                    )
-                                    .addOnSuccessListener { location ->
-                                        location?.let {
-                                            newWorkLat = it.latitude.toString()
-                                            newWorkLon = it.longitude.toString()
-                                        }
-                                    }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = hasLocationPermission,
+                        onClick = {
+                            fusedLocationClient.lastLocation.addOnSuccessListener {
+                                it?.let {
+                                    newWorkLat = it.latitude.toString()
+                                    newWorkLon = it.longitude.toString()
+                                }
                             }
-                        ) {
-                            Icon(Icons.Default.MyLocation, null)
                         }
+                    ) {
+                        Icon(Icons.Default.MyLocation, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Utiliser ma position actuelle")
                     }
 
                     Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = newWorkName.isNotBlank()
-                                && newWorkLat.toDoubleOrNull() != null
-                                && newWorkLon.toDoubleOrNull() != null,
+                        enabled =
+                            newWorkName.isNotBlank() &&
+                                    newWorkLat.toDoubleOrNull() != null &&
+                                    newWorkLon.toDoubleOrNull() != null,
                         onClick = {
                             presenceViewModel.addWorkLocation(
-                                name = newWorkName,
-                                latitude = newWorkLat.toDouble(),
-                                longitude = newWorkLon.toDouble()
+                                newWorkName,
+                                newWorkLat.toDouble(),
+                                newWorkLon.toDouble()
                             )
                             newWorkName = ""
                             newWorkLat = ""
                             newWorkLon = ""
                         }
                     ) {
-                        Icon(Icons.Default.Add, null)
-                        Spacer(Modifier.width(8.dp))
                         Text("Ajouter le lieu")
                     }
                 }
 
-                /* ---------------- APPARENCE ---------------- */
+                /* ================= APPARENCE ================= */
+
                 SettingsCard(Icons.Default.Palette, "Apparence") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Style", Modifier.weight(1f))
-                        AppStyle.values().forEach {
+
+                    /* -------- STYLE -------- */
+
+                    Text("Style", fontWeight = FontWeight.Medium)
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppStyle.values().forEach { style ->
                             FilterChip(
-                                selected = settings.appStyle == it.name,
-                                onClick = { settingsViewModel.setAppStyle(it) },
-                                label = { Text(it.name) }
+                                selected = settings.appStyle == style.name,
+                                onClick = { settingsViewModel.setAppStyle(style) },
+                                label = { Text(style.name) }
                             )
                         }
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    Divider()
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Thème", Modifier.weight(1f))
+                    /* -------- THÈME -------- */
+
+                    Text("Thème", fontWeight = FontWeight.Medium)
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
                         ThemeMode.values().forEach { mode ->
-                            IconButton(onClick = { settingsViewModel.setThemeMode(mode) }) {
-                                Icon(
-                                    when (mode) {
-                                        ThemeMode.LIGHT -> Icons.Default.LightMode
-                                        ThemeMode.DARK -> Icons.Default.DarkMode
-                                        ThemeMode.SYSTEM -> Icons.Default.AutoMode
-                                    },
-                                    null,
-                                    tint = if (settings.themeMode == mode)
-                                        MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+
+                            val icon = when (mode) {
+                                ThemeMode.LIGHT -> Icons.Default.LightMode
+                                ThemeMode.DARK -> Icons.Default.DarkMode
+                                ThemeMode.SYSTEM -> Icons.Default.SettingsBrightness
+                            }
+
+                            FilledIconToggleButton(
+                                checked = settings.themeMode == mode,
+                                onCheckedChange = {
+                                    settingsViewModel.setThemeMode(mode)
+                                }
+                            ) {
+                                Icon(icon, contentDescription = mode.name)
                             }
                         }
+
                     }
                 }
+
             }
         }
     }
+
+    editedLocation?.let { loc ->
+        EditWorkLocationDialog(
+            location = loc,
+            onDismiss = { editedLocation = null },
+            onConfirm = { name, lat, lon ->
+                presenceViewModel.updateWorkLocation(loc, name, lat, lon)
+                editedLocation = null
+            }
+        )
+    }
 }
 
-/* ---------------- UI HELPERS ---------------- */
+/* ======================= HELPERS ========================== */
 
 @Composable
 fun SettingsCard(
@@ -364,11 +469,11 @@ fun SettingsCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+                Icon(icon, null)
                 Spacer(Modifier.width(8.dp))
                 Text(title, fontWeight = FontWeight.SemiBold)
             }
@@ -378,35 +483,85 @@ fun SettingsCard(
 }
 
 @Composable
-fun NumberField(label: String, value: String, onValueChange: (String) -> Unit) {
+fun NumberField(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    onValueChange: (String) -> Unit
+) {
     OutlinedTextField(
         value = value,
-        onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) onValueChange(it) },
+        onValueChange = { if (it.all(Char::isDigit) || it.startsWith("-")) onValueChange(it) },
         label = { Text(label) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     )
 }
 
 @Composable
-fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
+fun EditWorkLocationDialog(
+    location: WorkLocationEntity,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Double, Double) -> Unit
+) {
+    var name by remember { mutableStateOf(location.name) }
+    var lat by remember { mutableStateOf(location.latitude.toString()) }
+    var lon by remember { mutableStateOf(location.longitude.toString()) }
 
-@Composable
-fun RadioGroup(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
-    Column {
-        options.forEachIndexed { index, label ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(
-                    selected = index == selectedIndex,
-                    onClick = { onSelect(index) }
-                )
-                Text(label)
+    val context = LocalContext.current
+    val fusedLocationClient =
+        remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    val hasLocationPermission =
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Modifier le lieu") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Nom") })
+                OutlinedTextField(lat, { lat = it }, label = { Text("Latitude") })
+                OutlinedTextField(lon, { lon = it }, label = { Text("Longitude") })
+
+                OutlinedButton(
+                    enabled = hasLocationPermission,
+                    onClick = {
+                        fusedLocationClient.lastLocation.addOnSuccessListener {
+                            it?.let {
+                                lat = it.latitude.toString()
+                                lon = it.longitude.toString()
+                            }
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.MyLocation, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Utiliser ma position actuelle")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(
+                        name,
+                        lat.toDoubleOrNull() ?: location.latitude,
+                        lon.toDoubleOrNull() ?: location.longitude
+                    )
+                }
+            ) {
+                Text("Valider")
             }
         }
-    }
+,
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Annuler")
+            }
+        }
+    )
 }

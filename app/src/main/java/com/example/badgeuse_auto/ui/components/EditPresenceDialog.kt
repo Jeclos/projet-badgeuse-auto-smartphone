@@ -13,7 +13,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /* ================================================================ */
-/* EDIT PRESENCE DIALOG                                             */
+/* EDIT PRESENCE (BOTTOM SHEET – même nom pour compatibilité)       */
 /* ================================================================ */
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -25,6 +25,10 @@ fun EditPresenceDialog(
 ) {
     val context = LocalContext.current
     val calendar = remember { Calendar.getInstance() }
+
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
 
     var enterTime by remember { mutableStateOf(entry.enterTime) }
     var exitTime by remember { mutableStateOf(entry.exitTime) }
@@ -49,73 +53,84 @@ fun EditPresenceDialog(
         ).show()
     }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Modifier la présence") },
+        sheetState = sheetState,
+        windowInsets = WindowInsets(0)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
 
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(
+                text = "Modifier la présence",
+                style = MaterialTheme.typography.titleLarge
+            )
 
-                /* ---------------- ENTRÉE ---------------- */
+            /* ---------------- ENTRÉE ---------------- */
 
-                SectionTitle("Entrée")
+            SectionTitle("Entrée")
+
+            ReadOnlyField(
+                label = "Date",
+                value = dateFormatter.format(Date(enterTime)),
+                onClick = {
+                    showDatePicker(enterTime) { enterTime = it }
+                }
+            )
+
+            ReadOnlyField(
+                label = "Heure",
+                value = timeFormatter.format(Date(enterTime)),
+                onClick = { showEnterTimePicker = true }
+            )
+
+            /* ---------------- SORTIE ---------------- */
+
+            if (exitTime != null) {
+                SectionTitle("Sortie")
 
                 ReadOnlyField(
                     label = "Date",
-                    value = dateFormatter.format(Date(enterTime)),
+                    value = dateFormatter.format(Date(exitTime!!)),
                     onClick = {
-                        showDatePicker(enterTime) { enterTime = it }
+                        showDatePicker(exitTime!!) { exitTime = it }
                     }
                 )
 
                 ReadOnlyField(
                     label = "Heure",
-                    value = timeFormatter.format(Date(enterTime)),
-                    onClick = { showEnterTimePicker = true }
+                    value = timeFormatter.format(Date(exitTime!!)),
+                    onClick = { showExitTimePicker = true }
                 )
+            }
 
-                /* ---------------- SORTIE ---------------- */
+            Spacer(Modifier.height(12.dp))
 
-                if (exitTime != null) {
-                    Spacer(Modifier.height(8.dp))
-                    SectionTitle("Sortie")
-
-                    ReadOnlyField(
-                        label = "Date",
-                        value = dateFormatter.format(Date(exitTime!!)),
-                        onClick = {
-                            showDatePicker(exitTime!!) { exitTime = it }
-                        }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Annuler")
+                }
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = {
+                    onValidate(
+                        entry.copy(
+                            enterTime = enterTime,
+                            exitTime = exitTime
+                        )
                     )
-
-                    ReadOnlyField(
-                        label = "Heure",
-                        value = timeFormatter.format(Date(exitTime!!)),
-                        onClick = { showExitTimePicker = true }
-                    )
+                }) {
+                    Text("Valider")
                 }
             }
-        },
-
-        confirmButton = {
-            TextButton(onClick = {
-                onValidate(
-                    entry.copy(
-                        enterTime = enterTime,
-                        exitTime = exitTime
-                    )
-                )
-            }) {
-                Text("Valider")
-            }
-        },
-
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Annuler")
-            }
         }
-    )
+    }
 
     /* ---------------- TIME PICKERS ---------------- */
 
@@ -205,20 +220,24 @@ private fun ReadOnlyField(
     value: String,
     onClick: () -> Unit
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = {},
-        readOnly = true,
-        enabled = true,
-        label = { Text(label) },
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
-        colors = TextFieldDefaults.colors(
-            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+            .clickable { onClick() }   // 🔥 clic sur toute la zone
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            enabled = false,          // 🔑 clé du problème
+            readOnly = true,
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = TextFieldDefaults.colors(
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledLabelColor = MaterialTheme.colorScheme.primary,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                disabledIndicatorColor = MaterialTheme.colorScheme.outline
+            )
         )
-    )
+    }
 }

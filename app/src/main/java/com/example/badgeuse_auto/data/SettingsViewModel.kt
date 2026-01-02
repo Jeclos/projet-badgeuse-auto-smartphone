@@ -44,6 +44,13 @@ class SettingsViewModel(
         employerName: String,
         employerAddress: String,
         city: String,
+
+        depotStartHour: Int,
+        depotStartMinute: Int,
+        depotEndHour: Int,
+        depotEndMinute: Int,
+        depotAdjustMin: Int,
+
         onDone: () -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -55,31 +62,46 @@ class SettingsViewModel(
                     exitDistance = exitDistance,
                     enterDelaySec = enterDelaySec,
                     exitDelaySec = exitDelaySec,
+
                     lunchBreakEnabled = lunchEnabled,
                     lunchBreakOutside = lunchOutside,
                     lunchBreakDurationMin = lunchDurationMin,
 
-                    // ✅ NOUVEAUX CHAMPS
                     employeeName = employeeName,
                     employeeAddress = employeeAddress,
                     employerName = employerName,
                     employerAddress = employerAddress,
-                    city = city
+                    city = city,
 
-                    // ✅ appStyle conservé
-                    // ✅ themeMode conservé
+                    depotStartHour = depotStartHour,
+                    depotStartMinute = depotStartMinute,
+                    depotEndHour = depotEndHour,
+                    depotEndMinute = depotEndMinute,
+                    depotDailyAdjustMin = depotAdjustMin
                 )
             )
 
-            withContext(Dispatchers.Main) {
-                onDone()
-            }
+            withContext(Dispatchers.Main) { onDone() }
         }
     }
+
 
     fun setDailyWorkHours(hours: Int) {
         viewModelScope.launch {
             repository.updateDailyWorkHours(hours)
         }
     }
+
+    fun setBadgeMode(mode: BadgeMode) {
+        viewModelScope.launch {
+            val current = repository.getSettings()
+            repository.saveSettings(
+                current.copy(badgeMode = mode)
+            )
+        }
+    }
+
 }
+
+
+

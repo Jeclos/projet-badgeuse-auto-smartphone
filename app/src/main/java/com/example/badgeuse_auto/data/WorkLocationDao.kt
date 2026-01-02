@@ -9,9 +9,9 @@ interface WorkLocationDao {
     @Insert
     suspend fun insert(location: WorkLocationEntity): Long
 
+    //UPDATE
     @Update
     suspend fun update(location: WorkLocationEntity)
-
     @Delete
     suspend fun delete(location: WorkLocationEntity)
 
@@ -33,9 +33,15 @@ interface WorkLocationDao {
         WHERE id = :id
         LIMIT 1
     """)
+
     suspend fun getById(id: Long): WorkLocationEntity?
     @Query("SELECT * FROM work_locations WHERE isActive = 1")
     suspend fun getActiveLocationsOnce(): List<WorkLocationEntity>
 
+    @Query("""
+    SELECT * FROM work_locations
+    ORDER BY name ASC
+""")
+    fun getAllLocationsFlow(): Flow<List<WorkLocationEntity>>
 
 }

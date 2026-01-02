@@ -11,9 +11,12 @@ data class PresenceEntity(
     val workLocationId: Long,
 
     val enterTime: Long,
-
     val exitTime: Long? = null,
 
-    val enterType: String,      // MANUAL / AUTO
-    val exitType: String? = null
+    val enterType: String,      // MANUAL / AUTO / AUTO_DEPOT
+    val exitType: String? = null,
+    val lastDepotExitTime: Long? = null,
+
+    val locked: Boolean = false // 🔒 journée clôturée définitivement
+
 )

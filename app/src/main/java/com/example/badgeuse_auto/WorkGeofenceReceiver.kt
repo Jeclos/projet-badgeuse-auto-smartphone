@@ -93,6 +93,12 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
                 "GEOFENCE",
                 "🏢 Lieu=${workLocation.name}"
             )
+            val current = repo.getCurrentPresence()
+
+            Log.e(
+                "GEOFENCE",
+                "🧪 currentPresence=$current"
+            )
 
             val msg = repo.autoEvent(
                 isEnter = isEntering,

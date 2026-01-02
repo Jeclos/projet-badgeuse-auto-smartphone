@@ -5,8 +5,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
-import kotlin.math.*
-
+import kotlin.math.min
+import com.example.badgeuse_auto.domain.WorkTimeCalculator
 class PresenceViewModel(
     private val repository: PresenceRepository
 ) : ViewModel() {
@@ -31,15 +31,69 @@ class PresenceViewModel(
 
     /* ---------------- WORK LOCATIONS ---------------- */
 
-    val workLocations: StateFlow<List<WorkLocationEntity>> =
+    /** Tous les lieux (settings + stats) */
+    val allWorkLocations: StateFlow<List<WorkLocationEntity>> =
+        repository.getAllWorkLocations().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    /** Lieux actifs uniquement (badgeage) */
+    val activeWorkLocations: StateFlow<List<WorkLocationEntity>> =
         repository.getActiveWorkLocations().stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList()
         )
 
-    fun addWorkLocation(name: String, latitude: Double, longitude: Double) {
+    /* ---------------- WORK LOCATIONS CRUD ---------------- */
+    fun onBadgeModeChanged(newMode: BadgeMode) {
         viewModelScope.launch {
+
+            repository.saveSettings(
+                settings.value.copy(badgeMode = newMode)
+            )
+
+            if (newMode == BadgeMode.DEPOT) {
+
+                val allLocations = repository.getAllWorkLocationsOnce()
+
+                if (allLocations.isEmpty()) return@launch
+
+                // On garde UN seul actif (le premier)
+                val keepActiveId = allLocations.first().id
+
+                allLocations.forEach { location ->
+                    repository.updateWorkLocation(
+                        location.copy(
+                            isActive = location.id == keepActiveId
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun addWorkLocation(
+        name: String,
+        latitude: Double,
+        longitude: Double
+    ) {
+        viewModelScope.launch {
+
+            val badgeMode = repository.getBadgeMode()
+
+            if (badgeMode == BadgeMode.DEPOT) {
+                // 👉 en mode dépôt : désactiver tous les autres
+                val allLocations = repository.getAllWorkLocationsOnce()
+                allLocations.forEach { loc ->
+                    if (loc.isActive) {
+                        repository.updateWorkLocation(loc.copy(isActive = false))
+                    }
+                }
+            }
+
             repository.addWorkLocation(
                 WorkLocationEntity(
                     name = name,
@@ -51,65 +105,142 @@ class PresenceViewModel(
         }
     }
 
-    fun deleteWorkLocation(location: WorkLocationEntity) {
+    fun updateWorkLocation(
+        location: WorkLocationEntity,
+        name: String,
+        latitude: Double,
+        longitude: Double
+    ) {
         viewModelScope.launch {
-            repository.deleteWorkLocation(location)
+            repository.updateWorkLocation(
+                location.copy(
+                    name = name,
+                    latitude = latitude,
+                    longitude = longitude
+                )
+            )
         }
     }
 
-    fun setWorkLocationActive(location: WorkLocationEntity, active: Boolean) {
+    /** Désactivation / activation  */
+    fun setWorkLocationActive(
+        location: WorkLocationEntity,
+        active: Boolean
+    ) {
         viewModelScope.launch {
+
+            val badgeMode = repository.getBadgeMode()
+
+            if (badgeMode == BadgeMode.DEPOT) {
+
+                val allLocations = repository.getAllWorkLocationsOnce()
+
+                if (active) {
+                    // 👉 un seul actif autorisé
+                    allLocations.forEach { loc ->
+                        val shouldBeActive = loc.id == location.id
+                        if (loc.isActive != shouldBeActive) {
+                            repository.updateWorkLocation(
+                                loc.copy(isActive = shouldBeActive)
+                            )
+                        }
+                    }
+                } else {
+                    // 👉 désactivation autorisée
+                    repository.updateWorkLocation(
+                        location.copy(isActive = false)
+                    )
+                }
+
+                return@launch
+            }
+
+            // MODE OFFICE
             repository.updateWorkLocation(
                 location.copy(isActive = active)
             )
         }
     }
 
-    /* ---------------- STATS (PRESENCE EN COURS INCLUSE) ---------------- */
+
+
+
+
+    fun deleteWorkLocation(location: WorkLocationEntity) {
+        viewModelScope.launch {
+            repository.deleteWorkLocation(location)
+        }
+    }
+
+    /* ---------------- STATS (présence en cours incluse) ---------------- */
+
+    private fun startOfWorkDay(
+        time: Long,
+        startHour: Int,
+        startMinute: Int
+    ): Long {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = time
+            set(Calendar.HOUR_OF_DAY, startHour)
+            set(Calendar.MINUTE, startMinute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        // Si on est AVANT l’heure de début → journée précédente
+        if (time < cal.timeInMillis) {
+            cal.add(Calendar.DAY_OF_MONTH, -1)
+        }
+
+        return cal.timeInMillis
+    }
+
+
 
     fun dailyStatsBetween(from: Long, to: Long): Flow<List<DailyStat>> =
-        combine(allPresences, workLocations) { presences, locations ->
-
-            if (from == 0L || to == 0L) return@combine emptyList()
+        combine(allPresences, allWorkLocations, settings) { presences, locations, settings ->
 
             val locationMap = locations.associate { it.id to it.name }
             val result = mutableMapOf<Pair<Long, Long>, Long>()
-            val now = System.currentTimeMillis()
 
-            presences.forEach { p ->
+            presences.forEach { presence ->
 
-                val end = p.exitTime ?: now
-                var current = p.enterTime
+                if (presence.exitTime == null) return@forEach
 
-                while (current < end) {
-                    val dayStart = startOfDay(current)
-                    val dayEnd = dayStart + 86_400_000L
-                    val sliceEnd = minOf(dayEnd, end)
+                val dayStart =
+                    WorkTimeCalculator.startOfWorkDay(
+                        presence.enterTime,
+                        settings.depotStartHour,
+                        settings.depotStartMinute
+                    )
 
-                    val minutes = (sliceEnd - current) / 60_000
-                    val key = dayStart to p.workLocationId
+                if (dayStart !in from..to) return@forEach
 
-                    result[key] = (result[key] ?: 0L) + minutes
-                    current = sliceEnd
-                }
+                val minutes =
+                    WorkTimeCalculator.computePayableMinutes(
+                        presence,
+                        settings
+                    )
+
+                val key = dayStart to presence.workLocationId
+                result[key] = (result[key] ?: 0L) + minutes
             }
 
-            result
-                .filter { it.key.first in from..to }
-                .map { (key, minutes) ->
-                    DailyStat(
-                        dayStart = key.first,
-                        totalMinutes = minutes,
-                        workLocationName =
-                            locationMap[key.second] ?: "Inconnu"
-                    )
-                }
-                .sortedBy { it.dayStart }
+            result.map { (key, minutes) ->
+                DailyStat(
+                    dayStart = key.first,
+                    totalMinutes = minutes,
+                    workLocationName =
+                        locationMap[key.second] ?: "Inconnu"
+                )
+            }.sortedBy { it.dayStart }
         }
+
+
 
     fun totalMinutesToday(): Flow<Long> =
         dailyStatsBetween(startOfToday(), endOfToday())
-            .map { list -> list.sumOf { it.totalMinutes } }
+            .map { stats -> stats.sumOf { it.totalMinutes } }
 
     /* ---------------- MANUAL ---------------- */
 
@@ -131,19 +262,24 @@ class PresenceViewModel(
             repository.updatePresence(
                 current.copy(
                     exitTime = System.currentTimeMillis(),
-                    exitType = "MANUAL"
+                    exitType = "MANUAL",
+                    locked = true
                 )
             )
         }
     }
 
-    /* ---------------- CRUD ---------------- */
+    /* ---------------- PRESENCE CRUD ---------------- */
 
     fun updatePresence(entry: PresenceEntity) =
-        viewModelScope.launch { repository.updatePresence(entry) }
+        viewModelScope.launch {
+            repository.updatePresence(entry)
+        }
 
     fun deletePresence(entry: PresenceEntity) =
-        viewModelScope.launch { repository.deletePresence(entry) }
+        viewModelScope.launch {
+            repository.deletePresence(entry)
+        }
 
     /* ---------------- UTILS ---------------- */
 
