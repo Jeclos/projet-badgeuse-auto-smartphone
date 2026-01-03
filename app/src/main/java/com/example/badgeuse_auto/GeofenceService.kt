@@ -4,8 +4,7 @@ import android.Manifest
 import android.app.*
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
-import android.os.IBinder
+import android.os.*
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -17,17 +16,28 @@ class GeofenceService : Service() {
     private lateinit var fusedClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
 
+    // 🔹 Thread dédié GPS (critique sur téléphone réel)
+    private lateinit var handlerThread: HandlerThread
+
     override fun onCreate() {
         super.onCreate()
 
+        Log.e("SERVICE_TEST", "GeofenceService CREATED")
+
+        // 🔒 Obligatoire AVANT toute requête GPS
         startForeground(NOTIF_ID, createNotification())
+
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
+
+        // 🔹 Thread séparé pour éviter le gel du mainLooper
+        handlerThread = HandlerThread("GPS_THREAD")
+        handlerThread.start()
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val loc = result.lastLocation
-                Log.d(
-                    "GEOFENCE",
+                Log.e(
+                    "GPS_REAL",
                     "Location update: ${loc?.latitude}, ${loc?.longitude}"
                 )
             }
@@ -52,35 +62,42 @@ class GeofenceService : Service() {
             } else true
 
         if (!fineGranted || !bgGranted) {
-            Log.e("GEOFENCE", "Permissions GPS manquantes (fine=$fineGranted, bg=$bgGranted)")
+            Log.e(
+                "GEOFENCE",
+                "Permissions GPS manquantes (fine=$fineGranted, bg=$bgGranted)"
+            )
             return
         }
 
+        // ⚠️ setWaitForAccurateLocation SUPPRIMÉ (bloque le GPS réel)
         val request = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
             30_000L
         )
             .setMinUpdateIntervalMillis(15_000L)
-            .setWaitForAccurateLocation(true)
             .build()
 
         fusedClient.requestLocationUpdates(
             request,
             locationCallback,
-            mainLooper
+            handlerThread.looper
         )
 
-        Log.d("GEOFENCE", "High accuracy GPS started")
-    }
-
-
-    override fun onDestroy() {
-        fusedClient.removeLocationUpdates(locationCallback)
-        super.onDestroy()
+        Log.e("GEOFENCE", "High accuracy GPS started (foreground)")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.e("SERVICE_TEST", "GeofenceService START COMMAND")
         return START_STICKY
+    }
+
+    override fun onDestroy() {
+        Log.e("SERVICE_TEST", "GeofenceService DESTROYED")
+
+        fusedClient.removeLocationUpdates(locationCallback)
+        handlerThread.quitSafely()
+
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
