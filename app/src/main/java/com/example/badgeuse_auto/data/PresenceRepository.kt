@@ -7,6 +7,8 @@ import com.example.badgeuse_auto.domain.OfficeBadgeModeHandler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNotNull
 import java.util.Calendar
+import com.example.badgeuse_auto.domain.HomeTravelBadgeModeHandler
+import com.example.badgeuse_auto.domain.ManualOnlyBadgeModeHandler
 
 class PresenceRepository(
     private val presenceDao: PresenceDao,
@@ -76,19 +78,45 @@ class PresenceRepository(
         val settings = settingsDao.getSettings()
             ?: return "Settings manquants"
 
+        if (
+            settings.badgeMode == BadgeMode.HOME_TRAVEL &&
+            !workLocation.isActive
+        ) {
+            return "Lieu non actif – ignoré"
+        }
+
+
+        // 🔒 MODE MANUEL SEUL : TOUT AUTO BLOQUÉ
+        if (settings.badgeMode == BadgeMode.MANUAL_ONLY) {
+            Log.w("AUTO_EVENT", "Mode MANUAL_ONLY – auto ignoré")
+            return "Mode manuel actif – auto désactivé"
+        }
         // nettoyage sécurité
-        presenceDao.closeZombiePresences(
-            now - 24 * 60 * 60 * 1000L
-        )
+        if (settings.badgeMode != BadgeMode.MANUAL_ONLY) {
+            presenceDao.closeZombiePresences(
+                now - 24 * 60 * 60 * 1000L
+            )
+        }
+
 
         val rawPresence = getCurrentPresence()
 
         val currentPresence = when (settings.badgeMode) {
             BadgeMode.OFFICE ->
-                rawPresence?.takeIf { it.enterType != "AUTO_DEPOT" }
+                rawPresence?.takeIf {
+                    it.enterType == "AUTO_OFFICE" || it.enterType == "MANUAL"
+                }
+
+
 
             BadgeMode.DEPOT ->
                 rawPresence?.takeIf { it.enterType == "AUTO_DEPOT" }
+
+            BadgeMode.HOME_TRAVEL ->
+                rawPresence
+
+            BadgeMode.MANUAL_ONLY ->
+                rawPresence // sécurité, jamais utilisé
         }
 
         Log.e(
@@ -164,12 +192,21 @@ class PresenceRepository(
 
         val handler: BadgeModeHandler =
             when (settings.badgeMode) {
+
                 BadgeMode.OFFICE ->
                     OfficeBadgeModeHandler(presenceDao)
 
                 BadgeMode.DEPOT ->
                     DepotBadgeModeHandler(presenceDao, settings)
+
+                BadgeMode.HOME_TRAVEL ->
+                    HomeTravelBadgeModeHandler(presenceDao, settings)
+
+
+                BadgeMode.MANUAL_ONLY ->
+                    return "Mode manuel actif – handler ignoré"
             }
+
 
         return if (isEnter) {
             handler.onEnter(now, workLocation, currentPresence)

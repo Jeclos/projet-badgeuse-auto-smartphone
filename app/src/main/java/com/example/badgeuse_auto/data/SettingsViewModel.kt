@@ -50,7 +50,7 @@ class SettingsViewModel(
         depotEndHour: Int,
         depotEndMinute: Int,
         depotAdjustMin: Int,
-
+        travelTimeMin: Int,
         onDone: () -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -78,6 +78,7 @@ class SettingsViewModel(
                     depotEndHour = depotEndHour,
                     depotEndMinute = depotEndMinute,
                     depotDailyAdjustMin = depotAdjustMin
+
                 )
             )
 

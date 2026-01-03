@@ -20,7 +20,7 @@ class OfficeBadgeModeHandler(
             PresenceEntity(
                 workLocationId = workLocation.id,
                 enterTime = now,
-                enterType = "AUTO"
+                enterType = "AUTO_OFFICE"
             )
         )
 

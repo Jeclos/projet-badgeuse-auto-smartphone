@@ -29,6 +29,12 @@ data class SettingsEntity(
     /* 🔥 NOUVEAU MODE */
     val badgeMode: BadgeMode = BadgeMode.OFFICE,
 
+    // ✅ HOME / TRAVEL (AJOUT)
+    val homeLatitude: Double = 0.0,
+    val homeLongitude: Double = 0.0,
+    val travelTimeMin: Int = 0,
+
+
     /* 🔥 MODE DEPOT */
     val depotStartHour: Int = 7,
     val depotStartMinute: Int = 0,

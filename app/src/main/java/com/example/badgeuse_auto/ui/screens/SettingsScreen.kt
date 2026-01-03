@@ -25,6 +25,9 @@ import com.example.badgeuse_auto.data.*
 import com.example.badgeuse_auto.ui.components.WallpaperBackground
 import com.example.badgeuse_auto.ui.theme.AppStyle
 import com.google.android.gms.location.LocationServices
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("MissingPermission")
@@ -41,6 +44,7 @@ fun SettingsScreen(
 
     val settings by settingsViewModel.settingsFlow.collectAsState(SettingsEntity())
     val workLocations by presenceViewModel.allWorkLocations.collectAsState()
+    var travelTime by remember { mutableStateOf("") }
 
 
     /* ================= UI STATES ================= */
@@ -125,6 +129,7 @@ fun SettingsScreen(
                         .navigationBarsPadding(),
                     onClick = {
                         settingsViewModel.saveSettings(
+
                             enterDistance.toIntOrNull() ?: 0,
                             exitDistance.toIntOrNull() ?: 0,
                             enterDelay.toIntOrNull() ?: 0,
@@ -141,7 +146,8 @@ fun SettingsScreen(
                             depotStartMinute.toIntOrNull() ?: settings.depotStartMinute,
                             depotEndHour.toIntOrNull() ?: settings.depotEndHour,
                             depotEndMinute.toIntOrNull() ?: settings.depotEndMinute,
-                            depotAdjust.toIntOrNull() ?: settings.depotDailyAdjustMin
+                            depotAdjust.toIntOrNull() ?: settings.depotDailyAdjustMin,
+                            travelTime.toIntOrNull() ?: settings.travelTimeMin,
                         ) {
                             onBack()
                         }
@@ -191,16 +197,19 @@ fun SettingsScreen(
                             )
 
                             Text(
-                                if (mode == BadgeMode.OFFICE)
-                                    "Bureau / Multi-lieux"
-                                else
-                                    "Dépôt / Entrepôt"
+                                when (mode) {
+                                    BadgeMode.OFFICE -> "Bureau / Multi-lieux"
+                                    BadgeMode.DEPOT -> "Dépôt / Entrepôt"
+                                    BadgeMode.HOME_TRAVEL -> "Départ domicile"
+                                    BadgeMode.MANUAL_ONLY -> "Manuel uniquement"
+                                }
                             )
                         }
                     }
                 }
 
-                /* ================= DÉTECTION ================= */
+
+                    /* ================= DÉTECTION ================= */
 
                 SettingsCard(Icons.Default.LocationOn, "Détection") {
                     NumberField("Distance entrée (m)", enterDistance) { enterDistance = it }
@@ -213,6 +222,27 @@ fun SettingsScreen(
                     NumberField("Entrée (sec)", enterDelay) { enterDelay = it }
                     NumberField("Sortie (sec)", exitDelay) { exitDelay = it }
                 }
+
+                /* ========== PARAMETRES MODE HOME_TRAVEL ========= */
+
+                if (settings.badgeMode == BadgeMode.HOME_TRAVEL) {
+                    SettingsCard(Icons.Default.DirectionsCar, "Temps de trajet") {
+                        NumberField(
+                            label = "Durée du trajet (min)",
+                            value = travelTime
+                        ) {
+                            travelTime = it
+                        }
+
+                        Text(
+                            "Ce temps est soustrait au départ et ajouté au retour",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+
+
 
                 /* ================= PAUSE DÉJEUNER ================= */
 
@@ -461,26 +491,60 @@ fun SettingsScreen(
 fun SettingsCard(
     icon: ImageVector,
     title: String,
+    initiallyExpanded: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    var expanded by remember { mutableStateOf(initiallyExpanded) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        )
     ) {
-        Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column {
+
+            // HEADER (toujours visible)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(icon, null)
                 Spacer(Modifier.width(8.dp))
-                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(
+                    title,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    if (expanded)
+                        Icons.Default.ExpandLess
+                    else
+                        Icons.Default.ExpandMore,
+                    contentDescription = null
+                )
             }
-            content()
+
+            // CONTENU REPLIABLE
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    content()
+                }
+            }
         }
     }
 }
+
 
 @Composable
 fun NumberField(

@@ -131,7 +131,7 @@ class PresenceViewModel(
 
             val badgeMode = repository.getBadgeMode()
 
-            if (badgeMode == BadgeMode.DEPOT) {
+            if (badgeMode == BadgeMode.DEPOT || badgeMode == BadgeMode.HOME_TRAVEL) {
 
                 val allLocations = repository.getAllWorkLocationsOnce()
 

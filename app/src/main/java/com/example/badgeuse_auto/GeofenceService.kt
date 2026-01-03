@@ -38,11 +38,23 @@ class GeofenceService : Service() {
 
     private fun requestLocationUpdates() {
 
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) return
+        val fineGranted = ActivityCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val bgGranted =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+            } else true
+
+        if (!fineGranted || !bgGranted) {
+            Log.e("GEOFENCE", "Permissions GPS manquantes (fine=$fineGranted, bg=$bgGranted)")
+            return
+        }
 
         val request = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
@@ -60,6 +72,7 @@ class GeofenceService : Service() {
 
         Log.d("GEOFENCE", "High accuracy GPS started")
     }
+
 
     override fun onDestroy() {
         fusedClient.removeLocationUpdates(locationCallback)
