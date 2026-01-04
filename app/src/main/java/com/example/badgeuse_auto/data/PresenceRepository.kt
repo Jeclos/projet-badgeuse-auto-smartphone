@@ -46,7 +46,6 @@ class PresenceRepository(
         presenceDao.delete(entry)
 
 
-
     /* ---------------- WORK LOCATIONS ---------------- */
 
     fun getAllWorkLocations(): Flow<List<WorkLocationEntity>> =
@@ -85,19 +84,18 @@ class PresenceRepository(
             return "Lieu non actif – ignoré"
         }
 
-
         // 🔒 MODE MANUEL SEUL : TOUT AUTO BLOQUÉ
         if (settings.badgeMode == BadgeMode.MANUAL_ONLY) {
             Log.w("AUTO_EVENT", "Mode MANUAL_ONLY – auto ignoré")
             return "Mode manuel actif – auto désactivé"
         }
+
         // nettoyage sécurité
         if (settings.badgeMode != BadgeMode.MANUAL_ONLY) {
             presenceDao.closeZombiePresences(
                 now - 24 * 60 * 60 * 1000L
             )
         }
-
 
         val rawPresence = getCurrentPresence()
 
@@ -107,8 +105,6 @@ class PresenceRepository(
                     it.enterType == "AUTO_OFFICE" || it.enterType == "MANUAL"
                 }
 
-
-
             BadgeMode.DEPOT ->
                 rawPresence?.takeIf { it.enterType == "AUTO_DEPOT" }
 
@@ -116,7 +112,7 @@ class PresenceRepository(
                 rawPresence
 
             BadgeMode.MANUAL_ONLY ->
-                rawPresence // sécurité, jamais utilisé
+                rawPresence
         }
 
         Log.e(
@@ -129,8 +125,25 @@ class PresenceRepository(
             return "Journée terminée"
         }
 
-        // badge manuel prioritaire
-        if (currentPresence?.enterType == "MANUAL") {
+        /* ---------------------------------------------------
+           ✅ SORTIE MANUELLE : TOUJOURS AUTORISÉE
+           --------------------------------------------------- */
+        if (!isEnter && currentPresence != null) {
+
+            // ⛔ on laisse la logique dépôt EXISTANTE gérer son cas
+            if (settings.badgeMode != BadgeMode.DEPOT) {
+                presenceDao.update(
+                    currentPresence.copy(
+                        exitTime = now,
+                        exitType = "MANUAL"
+                    )
+                )
+                return "Sortie manuelle enregistrée"
+            }
+        }
+
+        // badge manuel prioritaire (ENTRÉE SEULEMENT)
+        if (isEnter && currentPresence?.enterType == "MANUAL") {
             return "Badge manuel actif – auto ignoré"
         }
 
@@ -157,7 +170,6 @@ class PresenceRepository(
             // ⛔ TOUJOURS INTERDIT DE FERMER DANS LA PLAGE
             if (now < window.end) {
 
-                // juste mémoriser la sortie
                 presenceDao.update(
                     currentPresence.copy(
                         lastDepotExitTime = now
@@ -168,7 +180,6 @@ class PresenceRepository(
                 return "Sortie dépôt mémorisée"
             }
 
-            // ✅ fermeture seulement APRÈS la fin
             val realEnd = minOf(
                 currentPresence.lastDepotExitTime ?: now,
                 window.end
@@ -189,7 +200,6 @@ class PresenceRepository(
         /* ---------------------------------------------------
            🚦 DÉLÉGATION HANDLER
            --------------------------------------------------- */
-
         val handler: BadgeModeHandler =
             when (settings.badgeMode) {
 
@@ -202,11 +212,9 @@ class PresenceRepository(
                 BadgeMode.HOME_TRAVEL ->
                     HomeTravelBadgeModeHandler(presenceDao, settings)
 
-
                 BadgeMode.MANUAL_ONLY ->
                     return "Mode manuel actif – handler ignoré"
             }
-
 
         return if (isEnter) {
             handler.onEnter(now, workLocation, currentPresence)
@@ -214,63 +222,63 @@ class PresenceRepository(
             handler.onExit(now, workLocation, currentPresence)
         }
     }
-}
 
-/* ---------------------------------------------------
-   🧠 OUTILS TEMPORELS — CYCLE DÉPÔT
-   --------------------------------------------------- */
+    /* ---------------------------------------------------
+       🧠 OUTILS TEMPORELS — CYCLE DÉPÔT
+       --------------------------------------------------- */
 
-data class DepotWindow(
-    val start: Long,
-    val end: Long
-)
-private fun computeDepotWindow(
-    referenceTime: Long,
-    settings: SettingsEntity
-): DepotWindow {
+    data class DepotWindow(
+        val start: Long,
+        val end: Long
+    )
 
-    val refCal = Calendar.getInstance().apply {
-        timeInMillis = referenceTime
-    }
+    private fun computeDepotWindow(
+        referenceTime: Long,
+        settings: SettingsEntity
+    ): DepotWindow {
 
-    val startMinutes =
-        settings.depotStartHour * 60 + settings.depotStartMinute
-    val endMinutes =
-        settings.depotEndHour * 60 + settings.depotEndMinute
-
-    val refMinutes =
-        refCal.get(Calendar.HOUR_OF_DAY) * 60 +
-                refCal.get(Calendar.MINUTE)
-
-    val startCal = Calendar.getInstance().apply {
-        timeInMillis = referenceTime
-        set(Calendar.HOUR_OF_DAY, settings.depotStartHour)
-        set(Calendar.MINUTE, settings.depotStartMinute)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-
-    val endCal = Calendar.getInstance().apply {
-        timeInMillis = startCal.timeInMillis
-        set(Calendar.HOUR_OF_DAY, settings.depotEndHour)
-        set(Calendar.MINUTE, settings.depotEndMinute)
-    }
-
-    // 🌙 CAS NUIT (22h → 5h)
-    if (endMinutes <= startMinutes) {
-
-        // si on est APRÈS minuit mais AVANT la fin (ex 01:00)
-        if (refMinutes < endMinutes) {
-            startCal.add(Calendar.DAY_OF_MONTH, -1)
+        val refCal = Calendar.getInstance().apply {
+            timeInMillis = referenceTime
         }
 
-        endCal.add(Calendar.DAY_OF_MONTH, 1)
+        val startMinutes =
+            settings.depotStartHour * 60 + settings.depotStartMinute
+        val endMinutes =
+            settings.depotEndHour * 60 + settings.depotEndMinute
+
+        val refMinutes =
+            refCal.get(Calendar.HOUR_OF_DAY) * 60 +
+                    refCal.get(Calendar.MINUTE)
+
+        val startCal = Calendar.getInstance().apply {
+            timeInMillis = referenceTime
+            set(Calendar.HOUR_OF_DAY, settings.depotStartHour)
+            set(Calendar.MINUTE, settings.depotStartMinute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        val endCal = Calendar.getInstance().apply {
+            timeInMillis = startCal.timeInMillis
+            set(Calendar.HOUR_OF_DAY, settings.depotEndHour)
+            set(Calendar.MINUTE, settings.depotEndMinute)
+        }
+
+        // 🌙 CAS NUIT (22h → 5h)
+        if (endMinutes <= startMinutes) {
+
+            // si on est APRÈS minuit mais AVANT la fin (ex 01:00)
+            if (refMinutes < endMinutes) {
+                startCal.add(Calendar.DAY_OF_MONTH, -1)
+            }
+
+            endCal.add(Calendar.DAY_OF_MONTH, 1)
+        }
+
+        return DepotWindow(
+            start = startCal.timeInMillis,
+            end = endCal.timeInMillis
+        )
     }
-
-    return DepotWindow(
-        start = startCal.timeInMillis,
-        end = endCal.timeInMillis
-    )
 }
-
 
