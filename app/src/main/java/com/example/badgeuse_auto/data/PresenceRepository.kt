@@ -45,7 +45,6 @@ class PresenceRepository(
     suspend fun deletePresence(entry: PresenceEntity) =
         presenceDao.delete(entry)
 
-
     /* ---------------- WORK LOCATIONS ---------------- */
 
     fun getAllWorkLocations(): Flow<List<WorkLocationEntity>> =
@@ -120,26 +119,26 @@ class PresenceRepository(
             "mode=${settings.badgeMode} | enter=$isEnter | presence=$currentPresence"
         )
 
-        // journée déjà verrouillée
+        // 🔒 journée déjà clôturée
         if (currentPresence?.locked == true) {
             return "Journée terminée"
         }
 
         /* ---------------------------------------------------
-           ✅ SORTIE MANUELLE : TOUJOURS AUTORISÉE
+           ✅ SORTIE AUTO APRÈS ENTRÉE MANUELLE
            --------------------------------------------------- */
-        if (!isEnter && currentPresence != null) {
-
-            // ⛔ on laisse la logique dépôt EXISTANTE gérer son cas
-            if (settings.badgeMode != BadgeMode.DEPOT) {
-                presenceDao.update(
-                    currentPresence.copy(
-                        exitTime = now,
-                        exitType = "MANUAL"
-                    )
+        if (
+            !isEnter &&
+            currentPresence != null &&
+            currentPresence.enterType == "MANUAL"
+        ) {
+            presenceDao.update(
+                currentPresence.copy(
+                    exitTime = now,
+                    exitType = "AUTO"
                 )
-                return "Sortie manuelle enregistrée"
-            }
+            )
+            return "Sortie automatique après entrée manuelle"
         }
 
         // badge manuel prioritaire (ENTRÉE SEULEMENT)
@@ -213,7 +212,7 @@ class PresenceRepository(
                     HomeTravelBadgeModeHandler(presenceDao, settings)
 
                 BadgeMode.MANUAL_ONLY ->
-                    return "Mode manuel actif – handler ignoré"
+                    ManualOnlyBadgeModeHandler()
             }
 
         return if (isEnter) {
@@ -267,7 +266,6 @@ class PresenceRepository(
         // 🌙 CAS NUIT (22h → 5h)
         if (endMinutes <= startMinutes) {
 
-            // si on est APRÈS minuit mais AVANT la fin (ex 01:00)
             if (refMinutes < endMinutes) {
                 startCal.add(Calendar.DAY_OF_MONTH, -1)
             }
@@ -281,4 +279,3 @@ class PresenceRepository(
         )
     }
 }
-

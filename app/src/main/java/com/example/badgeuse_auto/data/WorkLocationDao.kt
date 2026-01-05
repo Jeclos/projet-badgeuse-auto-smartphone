@@ -44,4 +44,10 @@ interface WorkLocationDao {
 """)
     fun getAllLocationsFlow(): Flow<List<WorkLocationEntity>>
 
+    @Query("""
+    SELECT * FROM work_locations
+    WHERE geofenceUid = :uid
+    LIMIT 1
+""")
+    suspend fun getByGeofenceUid(uid: String): WorkLocationEntity?
 }

@@ -10,6 +10,7 @@ import androidx.core.app.ActivityCompat
 import com.example.badgeuse_auto.WorkGeofenceReceiver
 import com.example.badgeuse_auto.data.WorkLocationEntity
 import com.google.android.gms.location.*
+import androidx.annotation.RequiresPermission
 
 class GeofenceManager(
     private val context: Context
@@ -24,13 +25,17 @@ class GeofenceManager(
             context,
             0,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE // 🔥 OBLIGATOIRE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
     }
 
+    /* ---------------------------------------------------
+       🔧 BUILD
+       --------------------------------------------------- */
+
     private fun buildGeofence(location: WorkLocationEntity): Geofence =
         Geofence.Builder()
-            .setRequestId(location.id.toString())
+            .setRequestId(location.geofenceUid)
             .setCircularRegion(
                 location.latitude,
                 location.longitude,
@@ -43,8 +48,7 @@ class GeofenceManager(
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .build()
 
-    fun registerGeofences(locations: List<WorkLocationEntity>) {
-
+    private fun hasPermissions(): Boolean {
         val fineGranted =
             ActivityCompat.checkSelfPermission(
                 context,
@@ -57,8 +61,96 @@ class GeofenceManager(
                 Manifest.permission.ACCESS_BACKGROUND_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
 
-        if (!fineGranted || !backgroundGranted) {
-            Log.e("GEOFENCE", "❌ Permissions location insuffisantes")
+        return fineGranted && backgroundGranted
+    }
+
+    /* ---------------------------------------------------
+       ➕ AJOUT / UPDATE D’UN LIEU
+       --------------------------------------------------- */
+    @RequiresPermission(
+        allOf = [
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        ]
+    )
+    fun addOrUpdateLocation(location: WorkLocationEntity) {
+
+        if (!hasPermissions()) {
+            Log.e("GEOFENCE", "❌ Permissions insuffisantes")
+            return
+        }
+
+        if (!location.isActive) {
+            removeLocation(location)
+            return
+        }
+
+        val geofence = buildGeofence(location)
+
+        val request = GeofencingRequest.Builder()
+            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
+            .addGeofence(geofence)
+            .build()
+
+        // 🔁 on supprime d’abord celle du même ID
+        geofencingClient
+            .removeGeofences(listOf(location.geofenceUid))
+            .addOnCompleteListener {
+
+                geofencingClient
+                    .addGeofences(request, geofencePendingIntent)
+                    .addOnSuccessListener {
+                        Log.e(
+                            "GEOFENCE",
+                            "✅ Geofence ajoutée / MAJ : ${location.name}"
+                        )
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e(
+                            "GEOFENCE",
+                            "❌ Erreur ajout geofence ${location.name}",
+                            e
+                        )
+                    }
+            }
+    }
+
+    /* ---------------------------------------------------
+       ❌ SUPPRESSION D’UN LIEU
+       --------------------------------------------------- */
+
+    fun removeLocation(location: WorkLocationEntity) {
+
+        geofencingClient
+            .removeGeofences(listOf(location.geofenceUid))
+            .addOnSuccessListener {
+                Log.e(
+                    "GEOFENCE",
+                    "🗑️ Geofence supprimée : ${location.name}"
+                )
+            }
+            .addOnFailureListener { e ->
+                Log.e(
+                    "GEOFENCE",
+                    "❌ Erreur suppression geofence ${location.name}",
+                    e
+                )
+            }
+    }
+
+    /* ---------------------------------------------------
+       🔄 REBUILD GLOBAL (SAFE MODE)
+       --------------------------------------------------- */
+    @RequiresPermission(
+        allOf = [
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        ]
+    )
+    fun rebuildAll(locations: List<WorkLocationEntity>) {
+
+        if (!hasPermissions()) {
+            Log.e("GEOFENCE", "❌ Permissions insuffisantes")
             return
         }
 
@@ -66,27 +158,31 @@ class GeofenceManager(
             .filter { it.isActive }
             .map { buildGeofence(it) }
 
-        if (geofences.isEmpty()) {
-            Log.w("GEOFENCE", "⚠ Aucun geofence actif")
-            return
-        }
-
-        val request = GeofencingRequest.Builder()
-            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
-            .addGeofences(geofences)
-            .build()
-
         geofencingClient
-            .addGeofences(request, geofencePendingIntent)
-            .addOnSuccessListener {
-                Log.d("GEOFENCE", "✅ Geofences enregistrées")
-            }
-            .addOnFailureListener { e ->
-                Log.e("GEOFENCE", "❌ Erreur ajout geofences", e)
-            }
-    }
+            .removeGeofences(geofencePendingIntent)
+            .addOnCompleteListener {
 
-    fun clearGeofences() {
-        geofencingClient.removeGeofences(geofencePendingIntent)
+                if (geofences.isEmpty()) {
+                    Log.w("GEOFENCE", "⚠ Aucun geofence actif")
+                    return@addOnCompleteListener
+                }
+
+                val request = GeofencingRequest.Builder()
+                    .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
+                    .addGeofences(geofences)
+                    .build()
+
+                geofencingClient
+                    .addGeofences(request, geofencePendingIntent)
+                    .addOnSuccessListener {
+                        Log.e(
+                            "GEOFENCE",
+                            "✅ Rebuild complet (${geofences.size})"
+                        )
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("GEOFENCE", "❌ Erreur rebuild", e)
+                    }
+            }
     }
 }

@@ -15,11 +15,9 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
 
-        // 🔥 TRACE ABSOLUE
         Log.e("GEOFENCE", "🔥 WorkGeofenceReceiver déclenché")
 
         val event = GeofencingEvent.fromIntent(intent)
-
         if (event == null) {
             Log.e("GEOFENCE", "❌ GeofencingEvent = null")
             return
@@ -34,14 +32,13 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
         }
 
         val transition = event.geofenceTransition
-        val ids = event.triggeringGeofences?.map { it.requestId }
+        val triggering = event.triggeringGeofences
 
         Log.e(
             "GEOFENCE",
-            "➡ Transition=$transition | IDs=$ids"
+            "➡ Transition=$transition | IDs=${triggering?.map { it.requestId }}"
         )
 
-        // On ne traite que ENTER / EXIT
         if (
             transition != Geofence.GEOFENCE_TRANSITION_ENTER &&
             transition != Geofence.GEOFENCE_TRANSITION_EXIT
@@ -50,42 +47,34 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
             return
         }
 
-        val geofence = event.triggeringGeofences?.firstOrNull()
+        val isEntering =
+            transition == Geofence.GEOFENCE_TRANSITION_ENTER
+
+        val geofence = triggering?.firstOrNull()
         if (geofence == null) {
             Log.e("GEOFENCE", "❌ Aucun geofence déclenché")
             return
         }
 
-        val workLocationId = geofence.requestId.toLongOrNull()
-        if (workLocationId == null) {
-            Log.e("GEOFENCE", "❌ requestId invalide")
-            return
-        }
-
-        val isEntering =
-            transition == Geofence.GEOFENCE_TRANSITION_ENTER
-
-        Log.e(
-            "GEOFENCE",
-            if (isEntering) "📍 ENTER détecté" else "🚪 EXIT détecté"
-        )
+        val geofenceUid = geofence.requestId
 
         val db = PresenceDatabase.getDatabase(context)
-
         val repo = PresenceRepository(
             presenceDao = db.presenceDao(),
             workLocationDao = db.workLocationDao(),
             settingsDao = db.settingsDao()
         )
 
-        // ⚠ BroadcastReceiver = thread court → IO explicite
         CoroutineScope(Dispatchers.IO).launch {
 
             val workLocation =
-                db.workLocationDao().getById(workLocationId)
+                db.workLocationDao().getByGeofenceUid(geofenceUid)
 
             if (workLocation == null) {
-                Log.e("GEOFENCE", "❌ WorkLocation introuvable")
+                Log.e(
+                    "GEOFENCE",
+                    "❌ Aucun WorkLocation pour uid=$geofenceUid"
+                )
                 return@launch
             }
 
@@ -93,19 +82,13 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
                 "GEOFENCE",
                 "🏢 Lieu=${workLocation.name}"
             )
-            val current = repo.getCurrentPresence()
-
-            Log.e(
-                "GEOFENCE",
-                "🧪 currentPresence=$current"
-            )
 
             val msg = repo.autoEvent(
                 isEnter = isEntering,
                 workLocation = workLocation
             )
 
-            Log.e("GEOFENCE", "✅ autoEvent exécuté → $msg")
+            Log.e("GEOFENCE", "✅ autoEvent → $msg")
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(

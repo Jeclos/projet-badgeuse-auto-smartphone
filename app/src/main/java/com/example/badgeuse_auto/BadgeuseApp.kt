@@ -43,7 +43,8 @@ class BadgeuseApp : Application() {
 
         CoroutineScope(Dispatchers.IO).launch {
             val locations = repo.getAllWorkLocationsOnce()
-            geofenceManager.registerGeofences(locations)
+            geofenceManager.rebuildAll(locations)
         }
+
     }
 }
