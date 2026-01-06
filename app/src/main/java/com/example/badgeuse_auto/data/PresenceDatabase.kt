@@ -12,7 +12,7 @@ import androidx.room.TypeConverters
         WorkLocationEntity::class,
         SettingsEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

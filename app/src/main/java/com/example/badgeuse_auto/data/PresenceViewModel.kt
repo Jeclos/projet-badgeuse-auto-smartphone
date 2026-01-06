@@ -197,7 +197,11 @@ class PresenceViewModel(
 
 
 
-    fun dailyStatsBetween(from: Long, to: Long): Flow<List<DailyStat>> =
+    fun dailyStatsBetween(
+        from: Long,
+        to: Long,
+        locationName: String? = null
+    ): Flow<List<DailyStat>> =
         combine(allPresences, allWorkLocations, settings) { presences, locations, settings ->
 
             val locationMap = locations.associate { it.id to it.name }
@@ -207,6 +211,14 @@ class PresenceViewModel(
 
                 if (presence.exitTime == null) return@forEach
 
+                val locationLabel =
+                    locationMap[presence.workLocationId] ?: "Inconnu"
+
+                // 🔎 FILTRE EMPLACEMENT
+                if (locationName != null && locationLabel != locationName) {
+                    return@forEach
+                }
+
                 val dayStart =
                     WorkTimeCalculator.startOfWorkDay(
                         presence.enterTime,
@@ -214,7 +226,11 @@ class PresenceViewModel(
                         settings.depotStartMinute
                     )
 
-                if (dayStart !in from..to) return@forEach
+// ⚠️ On garde la présence si ELLE CHEVAUCHE la période
+                val presenceStart = presence.enterTime
+                val presenceEnd = presence.exitTime ?: presence.enterTime
+
+                if (presenceEnd < from || presenceStart > to) return@forEach
 
                 val minutes =
                     WorkTimeCalculator.computePayableMinutes(
@@ -225,6 +241,7 @@ class PresenceViewModel(
                 val key = dayStart to presence.workLocationId
                 result[key] = (result[key] ?: 0L) + minutes
             }
+
 
             result.map { (key, minutes) ->
                 DailyStat(

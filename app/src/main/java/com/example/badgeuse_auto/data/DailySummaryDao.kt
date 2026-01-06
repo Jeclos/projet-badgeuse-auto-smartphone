@@ -20,4 +20,6 @@ interface DailySummaryDao {
 
     @Query("SELECT * FROM daily_work_summary WHERE dayStart BETWEEN :from AND :to ORDER BY dayStart ASC")
     suspend fun getSummariesBetweenList(from: Long, to: Long): List<DailyWorkSummary>
+
+
 }

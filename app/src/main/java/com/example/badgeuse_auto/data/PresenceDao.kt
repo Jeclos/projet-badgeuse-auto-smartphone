@@ -60,5 +60,15 @@ interface PresenceDao {
     @Delete
     suspend fun delete(presence: PresenceEntity)
 
+    @Query("""
+    SELECT * FROM presences
+    WHERE enterTime < :to
+      AND (exitTime IS NULL OR exitTime > :from)
+    ORDER BY enterTime ASC
+""")
+    suspend fun getPresencesOverlapping(
+        from: Long,
+        to: Long
+    ): List<PresenceEntity>
 
 }

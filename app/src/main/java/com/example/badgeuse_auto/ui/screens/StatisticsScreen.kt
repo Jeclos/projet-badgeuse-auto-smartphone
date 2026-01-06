@@ -30,6 +30,7 @@ import com.example.badgeuse_auto.data.DailyStat
 import com.example.badgeuse_auto.export.ExportHeader
 import androidx.compose.material.icons.filled.PictureAsPdf
 import com.example.badgeuse_auto.export.PdfExportUtils
+import kotlinx.coroutines.flow.map
 
 
 
@@ -49,11 +50,18 @@ fun StatisticsScreen(
     // ✅ SETTINGS (UNE SEULE FOIS)
     val settings by viewModel.settings.collectAsState()
 
+    val locationNames by viewModel
+        .allWorkLocations
+        .map { locations -> locations.map { it.name }.distinct().sorted() }
+        .collectAsState(initial = emptyList())
+
+
     val dailyWorkMinutes = settings.dailyWorkHours * 60
 
     var selectedPeriod by remember { mutableStateOf(QuickPeriod.THIS_WEEK) }
     var customStart by remember { mutableStateOf<Long?>(null) }
     var customEnd by remember { mutableStateOf<Long?>(null) }
+    var selectedLocation by remember { mutableStateOf<String?>(null) }
 
     // ✅ PÉRIODE (AVANT EXPORT)
     val (start, end) = remember(selectedPeriod, customStart, customEnd) {
@@ -62,21 +70,32 @@ fun StatisticsScreen(
                 if (customStart != null && customEnd != null)
                     customStart!! to customEnd!!
                 else 0L to 0L
+
             else -> computePeriod(selectedPeriod)
         }
     }
+    val isPeriodValid =
+        selectedPeriod != QuickPeriod.CUSTOM ||
+                (customStart != null && customEnd != null)
 
     // ✅ STATS
-    val stats by viewModel
-        .dailyStatsBetween(start, end)
-        .collectAsState(initial = emptyList())
+    val stats by if (isPeriodValid) {
+        viewModel.dailyStatsBetween(
+            from = start,
+            to = end,
+            locationName = selectedLocation
+        )
+    } else {
+        kotlinx.coroutines.flow.flowOf(emptyList())
+    }.collectAsState(initial = emptyList())
+
 
     val totalMinutes = stats.sumOf { it.totalMinutes }
     val overtimeMinutes =
         (totalMinutes - stats.size * dailyWorkMinutes).coerceAtLeast(0)
 
     // ✅ HEADER EXPORT (MAINTENANT OK)
-    val exportHeader = remember(settings, start, end) {
+    val exportHeader = remember(settings, start, end, selectedLocation) {
         ExportHeader(
             employeeName = settings.employeeName ?: "",
             employeeAddress = settings.employeeAddress ?: "",
@@ -84,9 +103,11 @@ fun StatisticsScreen(
             employerAddress = settings.employerAddress ?: "",
             periodStart = start,
             periodEnd = end,
-            city = settings.city ?: "Paris"
+            city = settings.city ?: "Paris",
+            location = selectedLocation ?: "Tous les lieux"
         )
     }
+
 
     Scaffold(
         topBar = {
@@ -109,7 +130,6 @@ fun StatisticsScreen(
         ) {
 
             /* ---------- KPI ---------- */
-
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -129,10 +149,10 @@ fun StatisticsScreen(
             }
 
             /* ---------- FILTER ---------- */
-
             item {
                 Card {
                     Column(Modifier.padding(16.dp)) {
+
                         Text(
                             "Période",
                             style = MaterialTheme.typography.titleMedium,
@@ -150,6 +170,14 @@ fun StatisticsScreen(
                                     customEnd = null
                                 }
                             }
+                        )
+
+                        Spacer(Modifier.height(12.dp))
+
+                        LocationFilterDropdown(
+                            locations = locationNames,
+                            selectedLocation = selectedLocation,
+                            onLocationSelected = { selectedLocation = it }
                         )
 
                         if (selectedPeriod == QuickPeriod.CUSTOM) {
@@ -171,7 +199,6 @@ fun StatisticsScreen(
             }
 
             /* ---------- LIST ---------- */
-
             item {
                 Text(
                     "Détail journalier",
@@ -185,7 +212,6 @@ fun StatisticsScreen(
             }
 
             /* ---------- EXPORT ---------- */
-
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 
@@ -200,7 +226,6 @@ fun StatisticsScreen(
                                     periodStart = start,
                                     periodEnd = end
                                 )
-
                                 shareCsv(context, file)
                             }
                         }
@@ -231,8 +256,14 @@ fun StatisticsScreen(
                 }
             }
         }
+
     }
 }
+
+
+
+
+
 
 
 /* ---------------- UI COMPONENTS ---------------- */
@@ -274,6 +305,50 @@ fun DaySummaryCard(stat: DailyStat) {
                 formatMinutes(stat.totalMinutes),
                 fontWeight = FontWeight.Bold
             )
+        }
+    }
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LocationFilterDropdown(
+    locations: List<String>,
+    selectedLocation: String?,
+    onLocationSelected: (String?) -> Unit
+)
+{
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(expanded, { expanded = !expanded }) {
+        OutlinedTextField(
+            value = selectedLocation ?: "Tous les lieux",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Emplacement") },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded)
+            },
+            modifier = Modifier.menuAnchor().fillMaxWidth()
+        )
+
+        ExposedDropdownMenu(expanded, { expanded = false }) {
+
+            DropdownMenuItem(
+                text = { Text("Tous les lieux") },
+                onClick = {
+                    expanded = false
+                    onLocationSelected(null)
+                }
+            )
+
+            locations.forEach { location ->
+                DropdownMenuItem(
+                    text = { Text(location) },
+                    onClick = {
+                        expanded = false
+                        onLocationSelected(location)
+                    }
+                )
+            }
         }
     }
 }
@@ -426,4 +501,7 @@ fun QuickFilterDropdown(
             }
         }
     }
+
+
+
 }
