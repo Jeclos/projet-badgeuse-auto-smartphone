@@ -27,6 +27,7 @@ import com.example.badgeuse_auto.ui.theme.AppStyle
 import com.google.android.gms.location.LocationServices
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import com.example.badgeuse_auto.ui.help.BadgeHelp
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,6 +76,8 @@ fun SettingsScreen(
     var newWorkLon by remember { mutableStateOf("") }
 
     var editedLocation by remember { mutableStateOf<WorkLocationEntity?>(null) }
+    var helpText by remember { mutableStateOf<String?>(null) }
+    var helpTitle by remember { mutableStateOf("") }
 
     val hasLocationPermission =
         ContextCompat.checkSelfPermission(
@@ -186,8 +189,14 @@ fun SettingsScreen(
                 /* ================= MODE ================= */
 
                 SettingsCard(Icons.Default.Tune, "Mode de badgeage") {
+
+                    var helpMode by remember { mutableStateOf<BadgeMode?>(null) }
+
                     BadgeMode.values().forEach { mode ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             RadioButton(
                                 selected = settings.badgeMode == mode,
                                 onClick = {
@@ -202,33 +211,91 @@ fun SettingsScreen(
                                     BadgeMode.DEPOT -> "Dépôt / Entrepôt"
                                     BadgeMode.HOME_TRAVEL -> "Départ domicile"
                                     BadgeMode.MANUAL_ONLY -> "Manuel uniquement"
-                                }
+                                },
+                                modifier = Modifier.weight(1f)
                             )
+
+                            InfoButton { helpMode = mode }
                         }
+                    }
+
+                    helpMode?.let { mode ->
+                        InfoDialog(
+                            title = "Mode ${mode.name}",
+                            text = when (mode) {
+                                BadgeMode.OFFICE -> BadgeHelp.OFFICE
+                                BadgeMode.DEPOT -> BadgeHelp.DEPOT
+                                BadgeMode.HOME_TRAVEL -> BadgeHelp.HOME_TRAVEL
+                                BadgeMode.MANUAL_ONLY -> BadgeHelp.MANUAL
+                            },
+                            onDismiss = { helpMode = null }
+                        )
                     }
                 }
 
 
-                    /* ================= DÉTECTION ================= */
+
+                /* ================= DÉTECTION ================= */
 
                 SettingsCard(Icons.Default.LocationOn, "Détection") {
-                    NumberField("Distance entrée (m)", enterDistance) { enterDistance = it }
-                    NumberField("Distance sortie (m)", exitDistance) { exitDistance = it }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Distance entrée (m)", Modifier.weight(1f))
+                        InfoButton {
+                            helpTitle = "Distance d'entrée"
+                            helpText = BadgeHelp.ENTER_DISTANCE
+                        }
+                    }
+                    NumberField("", enterDistance) { enterDistance = it }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Distance sortie (m)", Modifier.weight(1f))
+                        InfoButton {
+                            helpTitle = "Distance de sortie"
+                            helpText = BadgeHelp.EXIT_DISTANCE
+                        }
+                    }
+                    NumberField("", exitDistance) { exitDistance = it }
                 }
 
                 /* ================= TEMPORISATION ================= */
 
                 SettingsCard(Icons.Default.Schedule, "Temporisation") {
-                    NumberField("Entrée (sec)", enterDelay) { enterDelay = it }
-                    NumberField("Sortie (sec)", exitDelay) { exitDelay = it }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Entrée (sec)", Modifier.weight(1f))
+                        InfoButton {
+                            helpTitle = "Temporisation entrée"
+                            helpText = BadgeHelp.ENTER_DELAY
+                        }
+                    }
+                    NumberField("", enterDelay) { enterDelay = it }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Sortie (sec)", Modifier.weight(1f))
+                        InfoButton {
+                            helpTitle = "Temporisation sortie"
+                            helpText = BadgeHelp.EXIT_DELAY
+                        }
+                    }
+                    NumberField("", exitDelay) { exitDelay = it }
                 }
 
                 /* ========== PARAMETRES MODE HOME_TRAVEL ========= */
 
                 if (settings.badgeMode == BadgeMode.HOME_TRAVEL) {
                     SettingsCard(Icons.Default.DirectionsCar, "Temps de trajet") {
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Durée du trajet (min)", Modifier.weight(1f))
+                            InfoButton {
+                                helpTitle = "Temps de trajet"
+                                helpText = BadgeHelp.TRAVEL_TIME
+                            }
+                        }
+
                         NumberField(
-                            label = "Durée du trajet (min)",
+                            label = "",
                             value = travelTime
                         ) {
                             travelTime = it
@@ -250,8 +317,16 @@ fun SettingsScreen(
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Activer la pause", Modifier.weight(1f))
-                        Switch(checked = lunchEnabled, onCheckedChange = { lunchEnabled = it })
+                        InfoButton {
+                            helpTitle = "Pause déjeuner"
+                            helpText = BadgeHelp.LUNCH
+                        }
+                        Switch(
+                            checked = lunchEnabled,
+                            onCheckedChange = { lunchEnabled = it }
+                        )
                     }
+
 
                     if (lunchEnabled) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -271,7 +346,14 @@ fun SettingsScreen(
                 if (settings.badgeMode == BadgeMode.DEPOT) {
                     SettingsCard(Icons.Default.Warehouse, "Paramètres du dépôt") {
 
-                        Text("Heures officielles", fontWeight = FontWeight.Medium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Heures officielles", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            InfoButton {
+                                helpTitle = "Heures du dépôt"
+                                helpText = BadgeHelp.DEPOT_HOURS
+                            }
+                        }
+
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             NumberField("Début (h)", depotStartHour, Modifier.weight(1f)) {
@@ -293,6 +375,13 @@ fun SettingsScreen(
 
                         Divider()
 
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Ajustement journalier", Modifier.weight(1f))
+                            InfoButton {
+                                helpTitle = "Ajustement journalier"
+                                helpText = BadgeHelp.DEPOT_ADJUST
+                            }
+                        }
                         NumberField("Ajustement journalier (min)", depotAdjust) {
                             depotAdjust = it
                         }
@@ -472,6 +561,13 @@ fun SettingsScreen(
             }
         }
     }
+    helpText?.let {
+        InfoDialog(
+            title = helpTitle,
+            text = it,
+            onDismiss = { helpText = null }
+        )
+    }
 
     editedLocation?.let { loc ->
         EditWorkLocationDialog(
@@ -628,4 +724,38 @@ fun EditWorkLocationDialog(
             }
         }
     )
+}
+@Composable
+fun InfoDialog(
+    title: String,
+    text: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(title, fontWeight = FontWeight.SemiBold)
+        },
+        text = {
+            Text(text)
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("OK")
+            }
+        }
+    )
+}
+@Composable
+fun InfoButton(onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(20.dp)
+    ) {
+        Icon(
+            Icons.Default.Info,
+            contentDescription = "Information",
+            tint = MaterialTheme.colorScheme.primary
+        )
+    }
 }

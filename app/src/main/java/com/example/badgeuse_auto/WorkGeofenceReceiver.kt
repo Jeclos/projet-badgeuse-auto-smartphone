@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
+import com.example.badgeuse_auto.data.BadgeMode
 import com.example.badgeuse_auto.data.PresenceDatabase
 import com.example.badgeuse_auto.data.PresenceRepository
 import com.google.android.gms.location.Geofence
@@ -77,12 +78,32 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
                 )
                 return@launch
             }
-
+            if (!workLocation.isActive) {
+                Log.w(
+                    "GEOFENCE",
+                    "⛔ Geofence ignorée (lieu désactivé): ${workLocation.name}"
+                )
+                return@launch
+            }
             Log.e(
                 "GEOFENCE",
                 "🏢 Lieu=${workLocation.name}"
             )
 
+            val badgeMode = repo.getBadgeMode()
+            val currentPresence = repo.getCurrentPresence()
+
+            if (
+                badgeMode != BadgeMode.HOME_TRAVEL &&
+                !isEntering &&
+                currentPresence == null
+            ) {
+                Log.w(
+                    "GEOFENCE",
+                    "EXIT sans ENTER → ignoré (${workLocation.name})"
+                )
+                return@launch
+            }
             val msg = repo.autoEvent(
                 isEnter = isEntering,
                 workLocation = workLocation

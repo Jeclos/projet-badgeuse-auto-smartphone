@@ -147,7 +147,7 @@ class PresenceRepository(
         }
 
         /* ---------------------------------------------------
-           🔒 GESTION FERMETURE MODE DÉPÔT (RÈGLE DÉFINITIVE)
+           🔒 GESTION FERMETURE MODE DÉPÔT
            --------------------------------------------------- */
         if (
             settings.badgeMode == BadgeMode.DEPOT &&
@@ -161,38 +161,22 @@ class PresenceRepository(
                 settings
             )
 
-            Log.e(
-                "DEPOT_WINDOW",
-                "now=$now | start=${window.start} | end=${window.end}"
-            )
-
-            // ⛔ TOUJOURS INTERDIT DE FERMER DANS LA PLAGE
+            // ❌ AVANT L’HEURE MINI → IGNORÉ
             if (now < window.end) {
-
-                presenceDao.update(
-                    currentPresence.copy(
-                        lastDepotExitTime = now
-                    )
-                )
-
-                Log.e("DEPOT", "📝 EXIT dépôt mémorisé à $now")
-                return "Sortie dépôt mémorisée"
+                Log.e("DEPOT", "⛔ Sortie avant heure mini ignorée")
+                return "Sortie avant heure mini ignorée"
             }
 
-            val realEnd = minOf(
-                currentPresence.lastDepotExitTime ?: now,
-                window.end
-            ) + settings.depotDailyAdjustMin * 60_000L
-
+            // ✅ PREMIÈRE SORTIE APRÈS HEURE MINI = FIN DE JOURNÉE
             presenceDao.update(
                 currentPresence.copy(
-                    exitTime = realEnd,
+                    exitTime = now,
                     exitType = "AUTO_DEPOT",
                     locked = true
                 )
             )
 
-            Log.e("DEPOT", "🔒 Fin auto dépôt à $realEnd")
+            Log.e("DEPOT", "🔒 Fin de journée dépôt à $now")
             return "Fin de journée dépôt"
         }
 
@@ -206,7 +190,7 @@ class PresenceRepository(
                     OfficeBadgeModeHandler(presenceDao)
 
                 BadgeMode.DEPOT ->
-                    DepotBadgeModeHandler(presenceDao, settings)
+                    DepotBadgeModeHandler(presenceDao, settings) // ⚠️ ENTRÉE SEULEMENT
 
                 BadgeMode.HOME_TRAVEL ->
                     HomeTravelBadgeModeHandler(presenceDao, settings)
@@ -215,13 +199,18 @@ class PresenceRepository(
                     ManualOnlyBadgeModeHandler()
             }
 
-        return if (isEnter) {
-            handler.onEnter(now, workLocation, currentPresence)
-        } else {
-            handler.onExit(now, workLocation, currentPresence)
+
+        return when {
+            settings.badgeMode == BadgeMode.DEPOT && !isEnter ->
+                "Sortie dépôt gérée par règle centrale"
+
+            isEnter ->
+                handler.onEnter(now, workLocation, currentPresence)
+
+            else ->
+                handler.onExit(now, workLocation, currentPresence)
         }
     }
-
     /* ---------------------------------------------------
        🧠 OUTILS TEMPORELS — CYCLE DÉPÔT
        --------------------------------------------------- */

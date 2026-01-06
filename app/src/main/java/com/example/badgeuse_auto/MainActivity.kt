@@ -24,6 +24,10 @@ import com.example.badgeuse_auto.ui.theme.BadgeuseTheme
 
 class MainActivity : ComponentActivity() {
 
+    private val geofenceManager by lazy {
+        (application as BadgeuseApp).geofenceManager
+    }
+
     private val db by lazy { PresenceDatabase.getDatabase(this) }
 
     private val repo by lazy {
@@ -35,8 +39,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private val presenceVM: PresenceViewModel by viewModels {
-        PresenceViewModelFactory(repo)
+        PresenceViewModelFactory(
+            repository = repo,
+            geofenceManager = geofenceManager
+        )
     }
+
 
     private val settingsVM: SettingsViewModel by viewModels {
         SettingsViewModelFactory(SettingsRepository(db.settingsDao()))

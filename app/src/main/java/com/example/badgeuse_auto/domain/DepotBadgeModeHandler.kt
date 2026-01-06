@@ -40,38 +40,9 @@ class DepotBadgeModeHandler(
         workLocation: WorkLocationEntity,
         currentPresence: PresenceEntity?
     ): String {
-
-        if (currentPresence == null) {
-            return "Sortie ignorée"
-        }
-
-        // mémoriser DERNIÈRE sortie
-        presenceDao.update(
-            currentPresence.copy(
-                lastDepotExitTime = now
-            )
-        )
-
-        // fermeture automatique SI heure atteinte
-        val theoreticalEnd = buildTime(
-            now,
-            settings.depotEndHour,
-            settings.depotEndMinute
-        )
-
-        if (now >= theoreticalEnd) {
-            presenceDao.update(
-                currentPresence.copy(
-                    exitTime = currentPresence.lastDepotExitTime ?: theoreticalEnd,
-                    exitType = "AUTO_DEPOT",
-                    locked = true
-                )
-            )
-            return "Fin de journée dépôt"
-        }
-
-        return "Sortie dépôt mémorisée"
+        return "Sortie dépôt gérée par règle centrale"
     }
+
 
     private fun buildTime(reference: Long, hour: Int, minute: Int): Long =
         Calendar.getInstance().apply {

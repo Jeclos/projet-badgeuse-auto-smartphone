@@ -7,8 +7,12 @@ import kotlinx.coroutines.launch
 import java.util.Calendar
 import kotlin.math.min
 import com.example.badgeuse_auto.domain.WorkTimeCalculator
+import com.example.badgeuse_auto.location.GeofenceManager
+
 class PresenceViewModel(
-    private val repository: PresenceRepository
+    private val repository: PresenceRepository,
+    private val geofenceManager: GeofenceManager
+
 ) : ViewModel() {
 
     /* ---------------- SETTINGS ---------------- */
@@ -46,7 +50,9 @@ class PresenceViewModel(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList()
         )
-
+    init {
+        observeWorkLocationsForGeofences()
+    }
     /* ---------------- WORK LOCATIONS CRUD ---------------- */
     fun onBadgeModeChanged(newMode: BadgeMode) {
         viewModelScope.launch {
@@ -314,4 +320,13 @@ class PresenceViewModel(
 
     private fun endOfToday(): Long =
         startOfToday() + 86_399_999L
+
+    private fun observeWorkLocationsForGeofences() {
+        viewModelScope.launch {
+            allWorkLocations.collect { locations ->
+                geofenceManager.rebuildAll(locations)
+            }
+        }
+    }
+
 }
