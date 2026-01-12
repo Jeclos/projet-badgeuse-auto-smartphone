@@ -11,6 +11,13 @@ import com.example.badgeuse_auto.data.PresenceRepository
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import kotlinx.coroutines.*
+import androidx.work.*
+import com.example.badgeuse_auto.location.EnterGeofenceWorker
+import java.util.concurrent.TimeUnit
+import com.example.badgeuse_auto.location.ExitGeofenceWorker
+
+
+
 
 class WorkGeofenceReceiver : BroadcastReceiver() {
 
@@ -18,106 +25,100 @@ class WorkGeofenceReceiver : BroadcastReceiver() {
 
         Log.e("GEOFENCE", "🔥 WorkGeofenceReceiver déclenché")
 
-        val event = GeofencingEvent.fromIntent(intent)
-        if (event == null) {
-            Log.e("GEOFENCE", "❌ GeofencingEvent = null")
-            return
-        }
-
-        if (event.hasError()) {
-            Log.e(
-                "GEOFENCE",
-                "❌ Erreur Geofence code=${event.errorCode}"
-            )
-            return
-        }
+        val event = GeofencingEvent.fromIntent(intent) ?: return
+        if (event.hasError()) return
 
         val transition = event.geofenceTransition
-        val triggering = event.triggeringGeofences
-
-        Log.e(
-            "GEOFENCE",
-            "➡ Transition=$transition | IDs=${triggering?.map { it.requestId }}"
-        )
-
-        if (
-            transition != Geofence.GEOFENCE_TRANSITION_ENTER &&
-            transition != Geofence.GEOFENCE_TRANSITION_EXIT
-        ) {
-            Log.w("GEOFENCE", "⚠ Transition ignorée")
-            return
-        }
-
-        val isEntering =
-            transition == Geofence.GEOFENCE_TRANSITION_ENTER
-
-        val geofence = triggering?.firstOrNull()
-        if (geofence == null) {
-            Log.e("GEOFENCE", "❌ Aucun geofence déclenché")
-            return
-        }
-
+        val geofence = event.triggeringGeofences?.firstOrNull() ?: return
         val geofenceUid = geofence.requestId
+
+        val isEntering = transition == Geofence.GEOFENCE_TRANSITION_ENTER
+        val isExiting = transition == Geofence.GEOFENCE_TRANSITION_EXIT
 
         val db = PresenceDatabase.getDatabase(context)
         val repo = PresenceRepository(
-            presenceDao = db.presenceDao(),
-            workLocationDao = db.workLocationDao(),
-            settingsDao = db.settingsDao()
+            db.presenceDao(),
+            db.workLocationDao(),
+            db.settingsDao()
         )
 
         CoroutineScope(Dispatchers.IO).launch {
 
+            /* =======================
+               ENTER
+               ======================= */
+            if (isEntering) {
+
+                Log.e("GEOFENCE", "⏳ ENTER détecté → temporisation")
+
+                val now = System.currentTimeMillis()
+
+                // Annule toute sortie en cours
+                WorkManager.getInstance(context)
+                    .cancelAllWorkByTag("EXIT_$geofenceUid")
+
+                // Annule ancien ENTER
+                WorkManager.getInstance(context)
+                    .cancelAllWorkByTag("ENTER_$geofenceUid")
+
+                // Sauvegarde token ENTER
+                repo.savePendingEnter(geofenceUid, now)
+
+                val delaySec = repo.getEnterDelaySec()
+
+                val workRequest =
+                    OneTimeWorkRequestBuilder<EnterGeofenceWorker>()
+                        .setInitialDelay(delaySec.toLong(), TimeUnit.SECONDS)
+                        .setInputData(
+                            workDataOf(
+                                "GEOFENCE_UID" to geofenceUid,
+                                "TOKEN" to now
+                            )
+                        )
+                        .addTag("ENTER_$geofenceUid")
+                        .build()
+
+                WorkManager.getInstance(context).enqueue(workRequest)
+                return@launch
+            }
+
+            /* =======================
+               EXIT
+               ======================= */
+
             val workLocation =
                 db.workLocationDao().getByGeofenceUid(geofenceUid)
+                    ?: return@launch
 
-            if (workLocation == null) {
-                Log.e(
-                    "GEOFENCE",
-                    "❌ Aucun WorkLocation pour uid=$geofenceUid"
-                )
-                return@launch
-            }
-            if (!workLocation.isActive) {
-                Log.w(
-                    "GEOFENCE",
-                    "⛔ Geofence ignorée (lieu désactivé): ${workLocation.name}"
-                )
-                return@launch
-            }
-            Log.e(
-                "GEOFENCE",
-                "🏢 Lieu=${workLocation.name}"
-            )
+            if (!workLocation.isActive) return@launch
 
-            val badgeMode = repo.getBadgeMode()
-            val currentPresence = repo.getCurrentPresence()
+            Log.e("GEOFENCE", "⏳ EXIT détecté → temporisation (${workLocation.name})")
 
-            if (
-                badgeMode != BadgeMode.HOME_TRAVEL &&
-                !isEntering &&
-                currentPresence == null
-            ) {
-                Log.w(
-                    "GEOFENCE",
-                    "EXIT sans ENTER → ignoré (${workLocation.name})"
-                )
-                return@launch
-            }
-            val msg = repo.autoEvent(
-                isEnter = isEntering,
-                workLocation = workLocation
-            )
+            // Annule ENTER en attente
+            WorkManager.getInstance(context)
+                .cancelAllWorkByTag("ENTER_$geofenceUid")
 
-            Log.e("GEOFENCE", "✅ autoEvent → $msg")
 
-            withContext(Dispatchers.Main) {
-                Toast.makeText(
-                    context,
-                    msg,
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
+            // Annule ancien EXIT
+            WorkManager.getInstance(context)
+                .cancelAllWorkByTag("EXIT_$geofenceUid")
+
+            val delaySec = repo.getExitDelaySec()
+
+            val workRequest =
+                OneTimeWorkRequestBuilder<ExitGeofenceWorker>()
+                    .setInitialDelay(delaySec.toLong(), TimeUnit.SECONDS)
+                    .setInputData(
+                        workDataOf("GEOFENCE_UID" to geofenceUid)
+                    )
+                    .addTag("EXIT_$geofenceUid")
+                    .build()
+
+            WorkManager.getInstance(context).enqueue(workRequest)
         }
     }
 }
+
+
+
+

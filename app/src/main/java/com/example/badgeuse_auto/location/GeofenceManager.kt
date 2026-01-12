@@ -11,6 +11,7 @@ import com.example.badgeuse_auto.WorkGeofenceReceiver
 import com.example.badgeuse_auto.data.WorkLocationEntity
 import com.google.android.gms.location.*
 import androidx.annotation.RequiresPermission
+import com.example.badgeuse_auto.data.SettingsEntity
 
 class GeofenceManager(
     private val context: Context
@@ -33,20 +34,21 @@ class GeofenceManager(
        🔧 BUILD
        --------------------------------------------------- */
 
-    private fun buildGeofence(location: WorkLocationEntity): Geofence =
+    private fun buildGeofence(
+        location: WorkLocationEntity,
+        radiusMeters: Float
+    ): Geofence =
         Geofence.Builder()
             .setRequestId(location.geofenceUid)
             .setCircularRegion(
                 location.latitude,
                 location.longitude,
-                150f
+                radiusMeters
             )
             .setTransitionTypes(
                 Geofence.GEOFENCE_TRANSITION_ENTER or
-                        Geofence.GEOFENCE_TRANSITION_EXIT //or
-                       //     Geofence.GEOFENCE_TRANSITION_DWELL
+                        Geofence.GEOFENCE_TRANSITION_EXIT
             )
-            //.setLoiteringDelay(60_000)
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .build()
 
@@ -75,16 +77,29 @@ class GeofenceManager(
             Manifest.permission.ACCESS_BACKGROUND_LOCATION
         ]
     )
-    fun rebuildAll(locations: List<WorkLocationEntity>) {
+    fun rebuildAllWithSettings(
+        locations: List<WorkLocationEntity>,
+        settings: SettingsEntity
+    )
+ {
 
         if (!hasPermissions()) {
             Log.e("GEOFENCE", "❌ Permissions insuffisantes")
             return
         }
 
+        val userRadius = settings.enterDistance
+
+        val radius = when {
+            userRadius <= 0 -> 300f
+            userRadius < 1 -> 1f
+            userRadius > 5_000 -> 5_000f
+            else -> userRadius.toFloat()
+        }
+
         val geofences = locations
             .filter { it.isActive }
-            .map { buildGeofence(it) }
+            .map { buildGeofence(it, radius) }
 
         geofencingClient
             .removeGeofences(geofencePendingIntent)

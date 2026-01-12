@@ -32,6 +32,7 @@ class SettingsRepository(
     // --------------------------------------------------
     suspend fun saveSettings(settings: SettingsEntity) {
         settingsDao.insert(settings)
+
     }
 
     // --------------------------------------------------

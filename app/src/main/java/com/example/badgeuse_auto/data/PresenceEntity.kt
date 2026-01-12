@@ -17,6 +17,15 @@ data class PresenceEntity(
     val exitType: String? = null,
     val lastDepotExitTime: Long? = null,
 
-    val locked: Boolean = false // 🔒 journée clôturée définitivement
+    val locked: Boolean = false, // 🔒 journée clôturée définitivement
+
+    val pendingEnterAt: Long? = null,
+    val pendingExitAt: Long? = null,
+    val isPending: Boolean = false,
+    val isExitPending: Boolean = false,
+
+
+
+
 
 )

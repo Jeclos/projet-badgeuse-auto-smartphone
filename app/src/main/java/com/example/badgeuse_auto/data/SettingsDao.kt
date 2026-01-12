@@ -6,14 +6,13 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
-
 @Dao
 interface SettingsDao {
 
-    @Query("SELECT * FROM settings LIMIT 1")
+    @Query("SELECT * FROM settings WHERE id = 1")
     suspend fun getSettings(): SettingsEntity?
 
-    @Query("SELECT * FROM settings LIMIT 1")
+    @Query("SELECT * FROM settings WHERE id = 1")
     fun getSettingsFlow(): Flow<SettingsEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -25,7 +24,18 @@ interface SettingsDao {
     @Query("UPDATE settings SET themeMode = :mode WHERE id = 1")
     suspend fun updateThemeMode(mode: ThemeMode)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertOrUpdate(settings: SettingsEntity)
-}
+    @Query("""
+        UPDATE settings
+        SET pendingEnterUid = :uid,
+            pendingEnterToken = :token
+        WHERE id = 1
+    """)
+    suspend fun updatePendingEnter(uid: String?, token: Long?)
 
+    @Query("""
+        SELECT pendingEnterToken
+        FROM settings
+        WHERE id = 1 AND pendingEnterUid = :uid
+    """)
+    suspend fun getPendingEnter(uid: String): Long?
+}

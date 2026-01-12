@@ -46,7 +46,11 @@ data class SettingsEntity(
 
     /* 🎨 UI */
     val appStyle: String = "PRO",
-    val themeMode: ThemeMode = ThemeMode.SYSTEM
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+
+    // 🔑 PENDING ENTER
+    val pendingEnterUid: String? = null,
+    val pendingEnterToken: Long? = null
 )
 
 

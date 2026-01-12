@@ -1,5 +1,6 @@
 package com.example.badgeuse_auto.data
 
+import android.annotation.SuppressLint
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
@@ -8,6 +9,7 @@ import java.util.Calendar
 import kotlin.math.min
 import com.example.badgeuse_auto.domain.WorkTimeCalculator
 import com.example.badgeuse_auto.location.GeofenceManager
+
 
 class PresenceViewModel(
     private val repository: PresenceRepository,
@@ -321,12 +323,20 @@ class PresenceViewModel(
     private fun endOfToday(): Long =
         startOfToday() + 86_399_999L
 
+    val settingsFlow = repository.settings
+    @SuppressLint("MissingPermission")
     private fun observeWorkLocationsForGeofences() {
         viewModelScope.launch {
-            allWorkLocations.collect { locations ->
-                geofenceManager.rebuildAll(locations)
+            combine(
+                repository.getAllWorkLocations(),
+                repository.settings
+            ) { locations, settings ->
+                locations to settings
+            }.collect { (locations, settings) ->
+                geofenceManager.rebuildAllWithSettings(locations, settings)
             }
         }
     }
+
 
 }

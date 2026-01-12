@@ -15,6 +15,13 @@ class PresenceRepository(
     private val workLocationDao: WorkLocationDao,
     private val settingsDao: SettingsDao
 ) {
+    /* =======================
+       ENTER TOKEN
+       ======================= */
+
+    suspend fun getPendingEnter(uid: String): Long? {
+        return settingsDao.getPendingEnter(uid)
+    }
 
     /* ---------------- SETTINGS ---------------- */
 
@@ -22,13 +29,33 @@ class PresenceRepository(
         settingsDao.getSettingsFlow().filterNotNull()
 
     suspend fun saveSettings(settings: SettingsEntity) {
-        settingsDao.insertOrUpdate(settings)
+        settingsDao.insert(settings)
     }
 
     suspend fun getBadgeMode(): BadgeMode =
         settingsDao.getSettings()?.badgeMode ?: BadgeMode.OFFICE
 
+    suspend fun getEnterDelaySec(): Int {
+        return settingsDao.getSettings()?.enterDelaySec ?: 0
+    }
+
+    suspend fun getExitDelaySec(): Int {
+        return settingsDao.getSettings()?.exitDelaySec ?: 0
+    }
+
+
     /* ---------------- PRESENCES ---------------- */
+    suspend fun savePendingEnter(uid: String, token: Long) {
+        settingsDao.updatePendingEnter(uid, token)
+    }
+
+    suspend fun clearPendingEnter(uid: String) {
+        settingsDao.updatePendingEnter(uid, null)
+    }
+
+    suspend fun isPendingEnterValid(uid: String, token: Long): Boolean {
+        return settingsDao.getPendingEnter(uid) == token
+    }
 
     suspend fun getCurrentPresence(): PresenceEntity? =
         presenceDao.getCurrentPresence()
@@ -98,21 +125,8 @@ class PresenceRepository(
 
         val rawPresence = getCurrentPresence()
 
-        val currentPresence = when (settings.badgeMode) {
-            BadgeMode.OFFICE ->
-                rawPresence?.takeIf {
-                    it.enterType == "AUTO_OFFICE" || it.enterType == "MANUAL"
-                }
-
-            BadgeMode.DEPOT ->
-                rawPresence?.takeIf { it.enterType == "AUTO_DEPOT" }
-
-            BadgeMode.HOME_TRAVEL ->
-                rawPresence
-
-            BadgeMode.MANUAL_ONLY ->
-                rawPresence
-        }
+        val currentPresence = rawPresence
+        var effectivePresence = currentPresence
 
         Log.e(
             "AUTO_EVENT",
@@ -180,6 +194,8 @@ class PresenceRepository(
             return "Fin de journée dépôt"
         }
 
+
+
         /* ---------------------------------------------------
            🚦 DÉLÉGATION HANDLER
            --------------------------------------------------- */
@@ -205,11 +221,13 @@ class PresenceRepository(
                 "Sortie dépôt gérée par règle centrale"
 
             isEnter ->
-                handler.onEnter(now, workLocation, currentPresence)
+                handler.onEnter(now, workLocation, effectivePresence)
 
             else ->
-                handler.onExit(now, workLocation, currentPresence)
+                handler.onExit(now, workLocation, effectivePresence)
         }
+
+
     }
     /* ---------------------------------------------------
        🧠 OUTILS TEMPORELS — CYCLE DÉPÔT
@@ -267,4 +285,5 @@ class PresenceRepository(
             end = endCal.timeInMillis
         )
     }
+
 }
