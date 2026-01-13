@@ -1,10 +1,12 @@
 package com.example.badgeuse_auto.export
 
 import android.content.Context
-import android.content.Intent
+import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
-import androidx.core.content.FileProvider
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import com.example.badgeuse_auto.data.DailyStat
 import java.io.File
 import java.io.FileOutputStream
@@ -13,20 +15,29 @@ import java.util.*
 
 object PdfExportUtils {
 
-    fun exportStatisticsPdf(
+    fun generateStatisticsPdf(
         context: Context,
         header: ExportHeader,
         stats: List<DailyStat>,
         totalMinutes: Long
-    ) {
+    ): File {
+
         val pdf = PdfDocument()
         val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
         val page = pdf.startPage(pageInfo)
         val canvas = page.canvas
 
+        // ---------- PAINTS ----------
         val textPaint = Paint().apply {
-            textSize = 11f
+            textSize = 9f
             color = android.graphics.Color.DKGRAY
+            isAntiAlias = true
+        }
+
+        val detailTextPaint = TextPaint().apply {
+            textSize = 9f
+            color = android.graphics.Color.DKGRAY
+            isAntiAlias = true
         }
 
         val boldPaint = Paint(textPaint).apply {
@@ -55,22 +66,33 @@ object PdfExportUtils {
             strokeWidth = 1f
         }
 
+        // ---------- LAYOUT ----------
+        val pageWidth = pageInfo.pageWidth.toFloat()
+        val leftMargin = 40f
+        val rightMargin = 40f
+
+        val xDate = 40f
+        val xDetails = 170f
+        val xDuration = pageWidth - 75f
+
+        val baselineOffset = textPaint.textSize + 4
         val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        var y = 40
+
+        var y = 40f
 
         // ---------- TITRE ----------
-        canvas.drawText("RELEVÉ D’HEURES", 297f, y.toFloat(), titlePaint)
+        canvas.drawText("RELEVÉ D’HEURES", pageWidth / 2, y.toFloat(), titlePaint)
         y += 40
 
-        // ---------- EMPLOYÉ (GAUCHE) ----------
-        canvas.drawText(header.employeeName, 40f, y.toFloat(), boldPaint)
+        // ---------- EMPLOYÉ ----------
+        canvas.drawText(header.employeeName, leftMargin, y.toFloat(), boldPaint)
         y += 14
         splitAddress(header.employeeAddress).forEach {
-            canvas.drawText(it, 40f, y.toFloat(), textPaint)
+            canvas.drawText(it, leftMargin, y.toFloat(), textPaint)
             y += 14
         }
 
-        // ---------- EMPLOYEUR (DROITE) ----------
+        // ---------- EMPLOYEUR ----------
         var rightY = 80
         canvas.drawText("À l’attention de :", 350f, rightY.toFloat(), boldPaint)
         rightY += 14
@@ -81,12 +103,13 @@ object PdfExportUtils {
             rightY += 14
         }
 
-        y = maxOf(y + 20, rightY + 20)
+        y = maxOf(y + 20f, rightY.toFloat() + 20f)
 
-        // ---------- FAIT LE ----------
+
+        // ---------- DATE ----------
         canvas.drawText(
             "Fait le ${sdf.format(Date())}",
-            40f,
+            leftMargin,
             y.toFloat(),
             textPaint
         )
@@ -97,41 +120,53 @@ object PdfExportUtils {
             "Période du ${sdf.format(Date(header.periodStart))} au ${
                 sdf.format(Date(header.periodEnd))
             }",
-            40f,
+            leftMargin,
             y.toFloat(),
             boldPaint
         )
         y += 30
 
         // ---------- TABLE HEADER ----------
-        canvas.drawRect(40f, y.toFloat(), 555f, (y + 24).toFloat(), tableBgPaint)
-        canvas.drawText("Date", 50f, (y + 17).toFloat(), tableHeaderPaint)
-        canvas.drawText("Lieu", 170f, (y + 17).toFloat(), tableHeaderPaint)
-        canvas.drawText("Durée", 480f, (y + 17).toFloat(), tableHeaderPaint)
+        canvas.drawRect(leftMargin, y.toFloat(), pageWidth - rightMargin, (y + 24).toFloat(), tableBgPaint)
+        canvas.drawText("Date", xDate + 10f, y + 17f, tableHeaderPaint)
+        canvas.drawText("Pointages", xDetails, y + 17f, tableHeaderPaint)
+        canvas.drawText("Durée", xDuration, y + 17f, tableHeaderPaint)
         y += 34
 
         // ---------- TABLE ROWS ----------
         stats.forEach { stat ->
-            canvas.drawText(
-                sdf.format(Date(stat.dayStart)),
-                50f,
-                y.toFloat(),
-                textPaint
-            )
-            canvas.drawText(stat.workLocationName, 170f, y.toFloat(), textPaint)
 
+            // --- DATE ---
+            val dateStr = sdf.format(Date(stat.dayStart))
+            canvas.drawText(dateStr, xDate, y + baselineOffset, textPaint)
+
+            // --- DETAILS ---
+            val detailsHeight = drawMultilineText(
+                canvas = canvas,
+                text = stat.detail.ifBlank { "-" },
+                x = xDetails,
+                y = y,
+                width = (xDuration - xDetails - 10).toInt(),
+                paint = detailTextPaint
+            )
+
+            // --- DURÉE ---
             val h = stat.totalMinutes / 60
             val m = stat.totalMinutes % 60
             canvas.drawText(
                 "${h}h${m.toString().padStart(2, '0')}",
-                480f,
-                y.toFloat(),
+                xDuration,
+                y + baselineOffset,
                 textPaint
             )
 
-            y += 18
-            canvas.drawLine(40f, y.toFloat(), 555f, y.toFloat(), linePaint)
-            y += 8
+            // --- HAUTEUR DYNAMIQUE ---
+            val rowHeight = maxOf(18f, detailsHeight.toFloat())
+            y += rowHeight + 6f
+
+            // --- SEPARATEUR ---
+            canvas.drawLine(leftMargin, y, pageWidth - rightMargin, y, linePaint)
+            y += 6f
         }
 
         // ---------- TOTAL ----------
@@ -140,7 +175,7 @@ object PdfExportUtils {
         y += 20
         canvas.drawText(
             "TOTAL PÉRIODE : ${totalH}h${totalM.toString().padStart(2, '0')}",
-            40f,
+            leftMargin,
             y.toFloat(),
             boldPaint
         )
@@ -158,22 +193,7 @@ object PdfExportUtils {
         pdf.writeTo(FileOutputStream(file))
         pdf.close()
 
-        val uri = FileProvider.getUriForFile(
-            context,
-            context.packageName + ".provider",
-            file
-        )
-
-        context.startActivity(
-            Intent.createChooser(
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "application/pdf"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                },
-                "Partager le relevé PDF"
-            )
-        )
+        return file
     }
 
     private fun splitAddress(address: String): List<String> {
@@ -188,5 +208,29 @@ object PdfExportUtils {
         } else {
             address.lines()
         }
+    }
+
+    private fun drawMultilineText(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        y: Float,
+        width: Int,
+        paint: TextPaint
+    ): Int {
+
+        val layout = StaticLayout.Builder
+            .obtain(text, 0, text.length, paint, width)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, 1f)
+            .setIncludePad(false)
+            .build()
+
+        canvas.save()
+        canvas.translate(x, y)
+        layout.draw(canvas)
+        canvas.restore()
+
+        return layout.height
     }
 }

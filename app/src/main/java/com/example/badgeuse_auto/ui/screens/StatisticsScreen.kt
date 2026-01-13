@@ -31,6 +31,10 @@ import com.example.badgeuse_auto.export.ExportHeader
 import androidx.compose.material.icons.filled.PictureAsPdf
 import com.example.badgeuse_auto.export.PdfExportUtils
 import kotlinx.coroutines.flow.map
+import androidx.navigation.NavHostController
+import android.net.Uri
+
+
 
 
 
@@ -42,6 +46,7 @@ import kotlinx.coroutines.flow.map
 @Composable
 fun StatisticsScreen(
     viewModel: PresenceViewModel,
+    navController: NavHostController,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -239,16 +244,22 @@ fun StatisticsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = stats.isNotEmpty(),
                         onClick = {
-                            scope.launch {
-                                PdfExportUtils.exportStatisticsPdf(
-                                    context = context,
-                                    header = exportHeader,
-                                    stats = stats,
-                                    totalMinutes = totalMinutes
-                                )
-                            }
+                            val pdfFile = PdfExportUtils.generateStatisticsPdf(
+                                context = context,
+                                header = exportHeader,
+                                stats = stats,
+                                totalMinutes = totalMinutes
+                            )
+
+                            val encodedPath = Uri.encode(pdfFile.absolutePath)
+
+                            navController.navigate(
+                                "pdfPreview/$encodedPath"
+                            )
+
                         }
-                    ) {
+                    )
+                    {
                         Icon(Icons.Default.PictureAsPdf, null)
                         Spacer(Modifier.width(8.dp))
                         Text("Exporter en PDF")

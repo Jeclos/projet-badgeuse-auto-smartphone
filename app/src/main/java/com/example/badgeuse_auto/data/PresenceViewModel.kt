@@ -9,6 +9,10 @@ import java.util.Calendar
 import kotlin.math.min
 import com.example.badgeuse_auto.domain.WorkTimeCalculator
 import com.example.badgeuse_auto.location.GeofenceManager
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
 
 
 class PresenceViewModel(
@@ -213,7 +217,9 @@ class PresenceViewModel(
         combine(allPresences, allWorkLocations, settings) { presences, locations, settings ->
 
             val locationMap = locations.associate { it.id to it.name }
-            val result = mutableMapOf<Pair<Long, Long>, Long>()
+
+            // 👉 groupement par (jour + lieu)
+            val grouped = mutableMapOf<Pair<Long, Long>, MutableList<PresenceEntity>>()
 
             presences.forEach { presence ->
 
@@ -222,10 +228,7 @@ class PresenceViewModel(
                 val locationLabel =
                     locationMap[presence.workLocationId] ?: "Inconnu"
 
-                // 🔎 FILTRE EMPLACEMENT
-                if (locationName != null && locationLabel != locationName) {
-                    return@forEach
-                }
+                if (locationName != null && locationLabel != locationName) return@forEach
 
                 val dayStart =
                     WorkTimeCalculator.startOfWorkDay(
@@ -234,29 +237,57 @@ class PresenceViewModel(
                         settings.depotStartMinute
                     )
 
-// ⚠️ On garde la présence si ELLE CHEVAUCHE la période
                 val presenceStart = presence.enterTime
                 val presenceEnd = presence.exitTime ?: presence.enterTime
 
                 if (presenceEnd < from || presenceStart > to) return@forEach
 
-                val minutes =
-                    WorkTimeCalculator.computePayableMinutes(
-                        presence,
-                        settings
-                    )
-
                 val key = dayStart to presence.workLocationId
-                result[key] = (result[key] ?: 0L) + minutes
+                grouped.getOrPut(key) { mutableListOf() }.add(presence)
             }
 
+            // 👉 construction des DailyStat
+            grouped.map { (key, presencesOfDay) ->
 
-            result.map { (key, minutes) ->
+                val totalMinutes =
+                    presencesOfDay.sumOf {
+                        WorkTimeCalculator.computePayableMinutes(it, settings)
+                    }
+
+                // 🔹 construction du détail sur UNE ligne
+                val sorted = presencesOfDay.sortedBy { it.enterTime }
+                val parts = mutableListOf<String>()
+
+                sorted.forEach { p ->
+                    val start = formatHour(p.enterTime)
+                    val end = p.exitTime?.let { formatHour(it) } ?: "?"
+                    parts.add("$start → $end")
+                }
+
+                // calcul pause déjeuner réelle
+                val rawMinutes = presencesOfDay.sumOf {
+                    val start = it.enterTime
+                    val end = it.exitTime ?: it.enterTime
+                    ((end - start) / 60_000).coerceAtLeast(0)
+                }
+
+                val payableMinutes = presencesOfDay.sumOf {
+                    WorkTimeCalculator.computePayableMinutes(it, settings)
+                }
+
+                val lunchPause = rawMinutes - payableMinutes
+
+                if (lunchPause > 0) {
+                    parts.add("pause $lunchPause min")
+                }
+
+
                 DailyStat(
                     dayStart = key.first,
-                    totalMinutes = minutes,
+                    totalMinutes = totalMinutes,
                     workLocationName =
-                        locationMap[key.second] ?: "Inconnu"
+                        locationMap[key.second] ?: "Inconnu",
+                    detail = parts.joinToString(" | ")
                 )
             }.sortedBy { it.dayStart }
         }
@@ -279,6 +310,11 @@ class PresenceViewModel(
                 )
             )
         }
+    }
+
+    private fun formatHour(time: Long): String {
+        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+        return sdf.format(Date(time))
     }
 
     fun manualExit() {

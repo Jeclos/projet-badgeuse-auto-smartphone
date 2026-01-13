@@ -11,6 +11,14 @@ import com.example.badgeuse_auto.ui.screens.MainScreen
 import com.example.badgeuse_auto.ui.screens.SettingsScreen
 import com.example.badgeuse_auto.ui.screens.StatisticsScreen
 import com.example.badgeuse_auto.ui.location.LocationViewModel
+import androidx.navigation.NavType
+import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
+import androidx.compose.ui.platform.LocalContext
+import com.example.badgeuse_auto.ui.preview.PdfPreviewScreen
+import com.example.badgeuse_auto.utils.sharePdf
+import com.example.badgeuse_auto.utils.printPdf
+
 
 /* ----------------------------
    Destinations
@@ -54,6 +62,7 @@ fun RootNav(
         composable(Destinations.STATS) {
             StatisticsScreen(
                 viewModel = presenceViewModel,
+                navController = navController, // 👈 LIGNE À AJOUTER
                 onBack = { navController.popBackStack() }
             )
         }
@@ -65,5 +74,23 @@ fun RootNav(
                 onBack = { navController.popBackStack() }
             )
         }
+
+        composable(
+            route = "pdfPreview/{pdfPath}",
+            arguments = listOf(
+                navArgument("pdfPath") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+
+            val pdfPath = backStackEntry.arguments!!.getString("pdfPath")!!
+            val context = LocalContext.current
+
+            PdfPreviewScreen(
+                pdfPath = pdfPath,
+                onShare = { file -> sharePdf(context, file) },
+                onPrint = { file -> printPdf(context, file) }
+            )
+        }
+
     }
 }
