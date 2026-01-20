@@ -22,10 +22,6 @@
             android:name=".WorkGeofenceReceiver"
             android:exported="false" />
 
-        <receiver
-            android:name=".location.DelayedExitReceiver"
-            android:exported="false" />
-
         <service
             android:name=".location.GeofenceService"
             android:foregroundServiceType="location"

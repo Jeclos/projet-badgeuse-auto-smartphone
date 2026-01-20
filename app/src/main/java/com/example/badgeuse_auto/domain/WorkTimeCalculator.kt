@@ -44,8 +44,9 @@ object WorkTimeCalculator {
         val rawMinutes =
             ((end - start) / 60_000).coerceAtLeast(0)
 
-        return TimeRules.applyLunchBreak(rawMinutes, settings) +
-                settings.depotDailyAdjustMin
+        return rawMinutes + settings.depotDailyAdjustMin
+
+
     }
 
     /* ---------------- UTILS ---------------- */

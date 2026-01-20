@@ -50,7 +50,23 @@ data class SettingsEntity(
 
     // 🔑 PENDING ENTER
     val pendingEnterUid: String? = null,
-    val pendingEnterToken: Long? = null
+    val pendingEnterToken: Long? = null,
+
+    // Pause déjeuner
+    val lunchEnabled: Boolean = false,
+
+// plage autorisée
+    val lunchWindowStartHour: Int = 12,
+    val lunchWindowStartMinute: Int = 0,
+    val lunchWindowEndHour: Int = 14,
+    val lunchWindowEndMinute: Int = 0,
+
+// durée minimale déclenchante
+    val lunchMinDurationMin: Int = 45,
+
+// durée standard à déduire si pause reconnue
+    val lunchDefaultDurationMin: Int = 45
+
 )
 
 

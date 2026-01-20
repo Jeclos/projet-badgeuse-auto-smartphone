@@ -26,9 +26,18 @@ class DepotBadgeModeHandler(
 
         presenceDao.insert(
             PresenceEntity(
+                timestamp = now,
+                minutesOfDay = (now / 60000L % 1440).toInt(),
+                isEnter = true,
+                isExit = false,
+
                 workLocationId = workLocation.id,
+
                 enterTime = maxOf(now, officialStart),
-                enterType = "AUTO_DEPOT"
+                exitTime = null,
+
+                enterType = "AUTO_DEPOT",
+                exitType = null
             )
         )
 

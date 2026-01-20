@@ -17,10 +17,10 @@ class OfficeBadgeModeHandler(
         }
 
         presenceDao.insert(
-            PresenceEntity(
+            PresenceEntity.autoEnter(
                 workLocationId = workLocation.id,
-                enterTime = now,
-                enterType = "AUTO_OFFICE"
+                time = now,
+                type = "AUTO_OFFICE"
             )
         )
 
@@ -42,9 +42,10 @@ class OfficeBadgeModeHandler(
         }
 
         presenceDao.update(
-            currentPresence.copy(
-                exitTime = now,
-                exitType = "AUTO"
+            PresenceEntity.autoExit(
+                current = currentPresence,
+                time = now,
+                type = "AUTO_OFFICE"
             )
         )
 

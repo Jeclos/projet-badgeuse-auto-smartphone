@@ -19,8 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.example.badgeuse_auto.data.PresenceViewModel
-import com.example.badgeuse_auto.data.SettingsEntity
-import com.example.badgeuse_auto.utils.CsvExportUtils
+import com.example.badgeuse_auto.export.CsvExportUtils
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -33,6 +32,7 @@ import com.example.badgeuse_auto.export.PdfExportUtils
 import kotlinx.coroutines.flow.map
 import androidx.navigation.NavHostController
 import android.net.Uri
+import android.util.Log
 
 
 
@@ -411,6 +411,9 @@ fun CustomDatePicker(
 /* ---------------- HELPERS ---------------- */
 
 private fun shareCsv(context: Context, file: File) {
+
+    Log.e("PDF_SHARE", file.absolutePath)
+
     val uri = FileProvider.getUriForFile(
         context,
         context.packageName + ".provider",

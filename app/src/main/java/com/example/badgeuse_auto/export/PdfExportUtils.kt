@@ -20,18 +20,44 @@ object PdfExportUtils {
         header: ExportHeader,
         stats: List<DailyStat>,
         totalMinutes: Long
+
     ): File {
 
         val pdf = PdfDocument()
-        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
-        val page = pdf.startPage(pageInfo)
-        val canvas = page.canvas
+        var pageNumber = 1
+        var pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNumber).create()
+        var page = pdf.startPage(pageInfo)
+        var canvas = page.canvas
+
+        // FOND BLANC EXPLICITE (ANTI DARK MODE)
+        val backgroundPaint = Paint().apply {
+            color = android.graphics.Color.WHITE
+        }
+        canvas.drawRect(
+            0f,
+            0f,
+            pageInfo.pageWidth.toFloat(),
+            pageInfo.pageHeight.toFloat(),
+            backgroundPaint
+        )
 
         // ---------- PAINTS ----------
         val textPaint = Paint().apply {
             textSize = 9f
             color = android.graphics.Color.DKGRAY
             isAntiAlias = true
+        }
+        val boldPaint = Paint(textPaint).apply {
+            isFakeBoldText = true
+            color = android.graphics.Color.BLACK
+        }
+
+        val rightBoldPaint = Paint(boldPaint).apply {
+            textAlign = Paint.Align.RIGHT
+        }
+
+        val rightTextPaint = Paint(textPaint).apply {
+            textAlign = Paint.Align.RIGHT
         }
 
         val detailTextPaint = TextPaint().apply {
@@ -40,10 +66,6 @@ object PdfExportUtils {
             isAntiAlias = true
         }
 
-        val boldPaint = Paint(textPaint).apply {
-            isFakeBoldText = true
-            color = android.graphics.Color.BLACK
-        }
 
         val titlePaint = Paint().apply {
             textSize = 18f
@@ -66,15 +88,17 @@ object PdfExportUtils {
             strokeWidth = 1f
         }
 
+
+
         // ---------- LAYOUT ----------
         val pageWidth = pageInfo.pageWidth.toFloat()
-        val leftMargin = 40f
-        val rightMargin = 40f
-
-        val xDate = 40f
-        val xDetails = 170f
-        val xDuration = pageWidth - 75f
-
+        val leftMargin = 24f
+        val rightMargin = 24f
+        val maxY = pageInfo.pageHeight - 60f
+        val xDate = leftMargin
+        val xDetails = leftMargin + 120f
+        val xDuration = pageWidth - rightMargin - 40f
+        val xTotalLabel = xDuration - 120f
         val baselineOffset = textPaint.textSize + 4
         val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
 
@@ -127,30 +151,108 @@ object PdfExportUtils {
         y += 30
 
         // ---------- TABLE HEADER ----------
-        canvas.drawRect(leftMargin, y.toFloat(), pageWidth - rightMargin, (y + 24).toFloat(), tableBgPaint)
+        canvas.drawRect(
+            leftMargin,
+            y.toFloat(),
+            pageWidth - rightMargin,
+            (y + 24).toFloat(),
+            tableBgPaint
+        )
         canvas.drawText("Date", xDate + 10f, y + 17f, tableHeaderPaint)
         canvas.drawText("Pointages", xDetails, y + 17f, tableHeaderPaint)
         canvas.drawText("Durée", xDuration, y + 17f, tableHeaderPaint)
         y += 34
+        // ---------- PAGINATION ----------
+        fun checkPageOverflow(requiredHeight: Float) {
+            if (y + requiredHeight > maxY) {
+
+                // terminer la page courante
+                pdf.finishPage(page)
+
+                // nouvelle page
+                pageNumber++
+                pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNumber).create()
+                page = pdf.startPage(pageInfo)
+                canvas = page.canvas
+
+                // fond blanc
+                canvas.drawRect(
+                    0f,
+                    0f,
+                    pageInfo.pageWidth.toFloat(),
+                    pageInfo.pageHeight.toFloat(),
+                    backgroundPaint
+                )
+
+                // reset Y
+                y = 40f
+
+                // redessiner l'en-tête du tableau
+                drawTableHeader(
+                    canvas,
+                    y,
+                    pageWidth,
+                    leftMargin,
+                    rightMargin,
+                    xDate,
+                    xDetails,
+                    xDuration,
+                    tableBgPaint,
+                    tableHeaderPaint
+                )
+
+                y += 34
+            }
+        }
+
 
         // ---------- TABLE ROWS ----------
-        stats.forEach { stat ->
+        var currentWeek: Pair<Int, Int>? = null
+        var weeklyTotalMinutes = 0L
 
-            // --- DATE ---
+        val sortedStats = stats.sortedBy { it.dayStart }
+
+        sortedStats.forEach { stat ->
+
+            val statWeek = weekKey(stat.dayStart)
+
+            if (currentWeek != null && statWeek != currentWeek) {
+                val h = weeklyTotalMinutes / 60
+                val m = weeklyTotalMinutes % 60
+
+                checkPageOverflow(30f)
+
+                y = drawInlineTotal(
+                    canvas = canvas,
+                    label = "TOTAL SEMAINE",
+                    value = "${h}h${m.toString().padStart(2, '0')}",
+                    x = xDetails,
+                    yStart = y + 6f,
+                    paint = boldPaint
+                )
+
+                y += 6f
+
+
+                weeklyTotalMinutes = 0
+            }
+
+            currentWeek = statWeek
+            weeklyTotalMinutes += stat.totalMinutes
+
             val dateStr = sdf.format(Date(stat.dayStart))
+            checkPageOverflow(50f)
             canvas.drawText(dateStr, xDate, y + baselineOffset, textPaint)
 
-            // --- DETAILS ---
             val detailsHeight = drawMultilineText(
-                canvas = canvas,
-                text = stat.detail.ifBlank { "-" },
-                x = xDetails,
-                y = y,
-                width = (xDuration - xDetails - 10).toInt(),
-                paint = detailTextPaint
+                canvas,
+                stat.detail.ifBlank { "-" },
+                xDetails,
+                y,
+                (xDuration - xDetails - 10).toInt(),
+                detailTextPaint
             )
 
-            // --- DURÉE ---
             val h = stat.totalMinutes / 60
             val m = stat.totalMinutes % 60
             canvas.drawText(
@@ -160,42 +262,69 @@ object PdfExportUtils {
                 textPaint
             )
 
-            // --- HAUTEUR DYNAMIQUE ---
             val rowHeight = maxOf(18f, detailsHeight.toFloat())
-            y += rowHeight + 6f
-
-            // --- SEPARATEUR ---
+            y += rowHeight + 4f
             canvas.drawLine(leftMargin, y, pageWidth - rightMargin, y, linePaint)
-            y += 6f
+            y += 4f
+
         }
 
-        // ---------- TOTAL ----------
+// ---------- DERNIÈRE SEMAINE ----------
+        if (weeklyTotalMinutes > 0) {
+            checkPageOverflow(30f)
+
+            val h = weeklyTotalMinutes / 60
+            val m = weeklyTotalMinutes % 60
+
+            y = drawInlineTotal(
+                canvas = canvas,
+                label = "TOTAL SEMAINE",
+                value = "${h}h${m.toString().padStart(2, '0')}",
+                x = xDetails,
+                yStart = y + 6f,
+                paint = boldPaint
+            )
+
+            y += 6f
+
+        }
+
+
+// ---------- TOTAL PÉRIODE ----------
         val totalH = totalMinutes / 60
         val totalM = totalMinutes % 60
-        y += 20
-        canvas.drawText(
-            "TOTAL PÉRIODE : ${totalH}h${totalM.toString().padStart(2, '0')}",
-            leftMargin,
-            y.toFloat(),
-            boldPaint
-        )
+            checkPageOverflow(40f)
 
+            y = drawInlineTotal(
+                canvas = canvas,
+                label = "TOTAL PÉRIODE",
+                value = "${totalH}h${totalM.toString().padStart(2, '0')}",
+                x = xDetails,
+                yStart = y + 10f,
+                paint = boldPaint
+            )
+
+
+
+// ---------- FINALISATION PDF ----------
         pdf.finishPage(page)
 
         val fileName = ExportFileNameUtils.buildFileName(
-            baseName = "releve_heures",
-            start = header.periodStart,
-            end = header.periodEnd,
-            extension = "pdf"
+            "releve_heures",
+            header.periodStart,
+            header.periodEnd,
+            "pdf"
         )
 
-        val file = File(context.cacheDir, fileName)
+        val exportDir = File(context.filesDir, "exports").apply {
+            if (!exists()) mkdirs()
+        }
+        val file = File(exportDir, fileName)
         pdf.writeTo(FileOutputStream(file))
         pdf.close()
 
         return file
     }
-
     private fun splitAddress(address: String): List<String> {
         val regex = Regex("(.*?)(\\d{5}.*)")
         val match = regex.find(address.trim())
@@ -233,4 +362,57 @@ object PdfExportUtils {
 
         return layout.height
     }
+    private fun drawTableHeader(
+        canvas: Canvas,
+        y: Float,
+        pageWidth: Float,
+        leftMargin: Float,
+        rightMargin: Float,
+        xDate: Float,
+        xDetails: Float,
+        xDuration: Float,
+        bgPaint: Paint,
+        textPaint: Paint
+    ) {
+        canvas.drawRect(
+            leftMargin,
+            y,
+            pageWidth - rightMargin,
+            y + 24,
+            bgPaint
+        )
+        canvas.drawText("Date", xDate + 10f, y + 17f, textPaint)
+        canvas.drawText("Pointages", xDetails, y + 17f, textPaint)
+        canvas.drawText("Durée", xDuration, y + 17f, textPaint)
+    }
+
+}
+private fun weekKey(timestamp: Long): Pair<Int, Int> {
+    val cal = Calendar.getInstance().apply {
+        timeInMillis = timestamp
+        firstDayOfWeek = Calendar.MONDAY
+        minimalDaysInFirstWeek = 4
+    }
+    return cal.get(Calendar.YEAR) to cal.get(Calendar.WEEK_OF_YEAR)
+}
+private fun drawInlineTotal(
+    canvas: Canvas,
+    label: String,
+    value: String,
+    x: Float,
+    yStart: Float,
+    paint: Paint
+): Float {
+
+    val lineHeight = paint.textSize + 12f
+    val text = "$label : $value"
+
+    canvas.drawText(
+        text,
+        x,
+        yStart + paint.textSize,
+        paint
+    )
+
+    return yStart + lineHeight
 }

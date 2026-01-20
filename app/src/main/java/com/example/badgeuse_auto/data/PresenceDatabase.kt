@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         WorkLocationEntity::class,
         SettingsEntity::class
     ],
-    version = 24,
+    version = 26,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

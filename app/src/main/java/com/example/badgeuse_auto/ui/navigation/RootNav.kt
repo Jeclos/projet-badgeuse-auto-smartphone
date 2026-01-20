@@ -12,12 +12,11 @@ import com.example.badgeuse_auto.ui.screens.SettingsScreen
 import com.example.badgeuse_auto.ui.screens.StatisticsScreen
 import com.example.badgeuse_auto.ui.location.LocationViewModel
 import androidx.navigation.NavType
-import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.compose.ui.platform.LocalContext
-import com.example.badgeuse_auto.ui.preview.PdfPreviewScreen
-import com.example.badgeuse_auto.utils.sharePdf
-import com.example.badgeuse_auto.utils.printPdf
+import com.example.badgeuse_auto.export.PdfPreviewScreen
+import com.example.badgeuse_auto.export.sharePdf
+import com.example.badgeuse_auto.export.printPdf
 
 
 /* ----------------------------

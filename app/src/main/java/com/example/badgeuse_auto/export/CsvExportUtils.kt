@@ -1,4 +1,4 @@
-package com.example.badgeuse_auto.utils
+package com.example.badgeuse_auto.export
 
 import android.content.Context
 import com.example.badgeuse_auto.data.DailyStat

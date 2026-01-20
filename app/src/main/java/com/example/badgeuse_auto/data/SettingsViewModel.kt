@@ -36,9 +36,19 @@ class SettingsViewModel(
         exitDistance: Int,
         enterDelaySec: Int,
         exitDelaySec: Int,
+
         lunchEnabled: Boolean,
         lunchOutside: Boolean,
         lunchDurationMin: Int,
+
+        // ➕ AJOUTER CES PARAMÈTRES
+        lunchWindowStartHour: Int,
+        lunchWindowStartMinute: Int,
+        lunchWindowEndHour: Int,
+        lunchWindowEndMinute: Int,
+        lunchMinDurationMin: Int,
+        lunchDefaultDurationMin: Int,
+
         employeeName: String,
         employeeAddress: String,
         employerName: String,
@@ -51,8 +61,10 @@ class SettingsViewModel(
         depotEndMinute: Int,
         depotAdjustMin: Int,
         travelTimeMin: Int,
+
         onDone: () -> Unit = {}
-    ) {
+    )
+{
         viewModelScope.launch(Dispatchers.IO) {
             val current = repository.getSettings()
 
@@ -67,6 +79,14 @@ class SettingsViewModel(
                     lunchBreakOutside = lunchOutside,
                     lunchBreakDurationMin = lunchDurationMin,
 
+                    // ✅ NOUVEAUX CHAMPS
+                    lunchWindowStartHour = lunchWindowStartHour,
+                    lunchWindowStartMinute = lunchWindowStartMinute,
+                    lunchWindowEndHour = lunchWindowEndHour,
+                    lunchWindowEndMinute = lunchWindowEndMinute,
+                    lunchMinDurationMin = lunchMinDurationMin,
+                    lunchDefaultDurationMin = lunchDefaultDurationMin,
+
                     employeeName = employeeName,
                     employeeAddress = employeeAddress,
                     employerName = employerName,
@@ -77,10 +97,12 @@ class SettingsViewModel(
                     depotStartMinute = depotStartMinute,
                     depotEndHour = depotEndHour,
                     depotEndMinute = depotEndMinute,
-                    depotDailyAdjustMin = depotAdjustMin
+                    depotDailyAdjustMin = depotAdjustMin,
 
+                    travelTimeMin = travelTimeMin
                 )
             )
+
 
             withContext(Dispatchers.Main) { onDone() }
         }

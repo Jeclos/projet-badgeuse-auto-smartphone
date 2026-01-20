@@ -1,6 +1,7 @@
-package com.example.badgeuse_auto.utils
+package com.example.badgeuse_auto.export
 
 import android.content.Context
+import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
 import android.print.*
@@ -18,7 +19,7 @@ class PdfPrintAdapter(
         newAttributes: PrintAttributes,
         cancellationSignal: CancellationSignal,
         callback: LayoutResultCallback,
-        extras: android.os.Bundle?
+        extras: Bundle?
     ) {
         callback.onLayoutFinished(
             PrintDocumentInfo.Builder(file.name)

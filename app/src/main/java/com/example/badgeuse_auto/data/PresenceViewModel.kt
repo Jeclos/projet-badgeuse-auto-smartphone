@@ -3,6 +3,7 @@ package com.example.badgeuse_auto.data
 import android.annotation.SuppressLint
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.badgeuse_auto.domain.LunchBreakCalculator
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -249,10 +250,6 @@ class PresenceViewModel(
             // 👉 construction des DailyStat
             grouped.map { (key, presencesOfDay) ->
 
-                val totalMinutes =
-                    presencesOfDay.sumOf {
-                        WorkTimeCalculator.computePayableMinutes(it, settings)
-                    }
 
                 // 🔹 construction du détail sur UNE ligne
                 val sorted = presencesOfDay.sortedBy { it.enterTime }
@@ -271,9 +268,19 @@ class PresenceViewModel(
                     ((end - start) / 60_000).coerceAtLeast(0)
                 }
 
-                val payableMinutes = presencesOfDay.sumOf {
-                    WorkTimeCalculator.computePayableMinutes(it, settings)
-                }
+                val lunchDeduction =
+                    LunchBreakCalculator.computeLunchAbsenceMinutes(
+                        presencesOfDay,
+                        settings
+                    )
+
+
+                val payableMinutes =
+                    (rawMinutes - lunchDeduction)
+                        .coerceAtLeast(0)
+                        .toLong()
+
+
 
                 val lunchPause = rawMinutes - payableMinutes
 
@@ -284,7 +291,7 @@ class PresenceViewModel(
 
                 DailyStat(
                     dayStart = key.first,
-                    totalMinutes = totalMinutes,
+                    totalMinutes = payableMinutes,
                     workLocationName =
                         locationMap[key.second] ?: "Inconnu",
                     detail = parts.joinToString(" | ")
@@ -302,11 +309,32 @@ class PresenceViewModel(
 
     fun manualEntry(workLocationId: Long) {
         viewModelScope.launch {
+
+            val now = System.currentTimeMillis()
+            val cal = Calendar.getInstance().apply { timeInMillis = now }
+
             repository.insertPresence(
                 PresenceEntity(
                     workLocationId = workLocationId,
-                    enterTime = System.currentTimeMillis(),
-                    enterType = "MANUAL"
+
+                    // 🔹 entrée
+                    enterTime = now,
+                    exitTime = null,
+
+                    // 🔹 flags événement
+                    isEnter = true,
+                    isExit = false,
+
+                    // 🔹 pour calcul pause
+                    timestamp = now,
+                    minutesOfDay =
+                        cal.get(Calendar.HOUR_OF_DAY) * 60 +
+                                cal.get(Calendar.MINUTE),
+
+                    // 🔹 méta
+                    enterType = "MANUAL",
+                    exitType = null,
+                    locked = false
                 )
             )
         }
@@ -319,16 +347,31 @@ class PresenceViewModel(
 
     fun manualExit() {
         viewModelScope.launch {
+
             val current = repository.getCurrentPresence() ?: return@launch
+
+            val now = System.currentTimeMillis()
+            val cal = Calendar.getInstance().apply { timeInMillis = now }
+
             repository.updatePresence(
                 current.copy(
-                    exitTime = System.currentTimeMillis(),
+                    exitTime = now,
                     exitType = "MANUAL",
+
+                    isEnter = false,
+                    isExit = true,
+
+                    timestamp = now,
+                    minutesOfDay =
+                        cal.get(Calendar.HOUR_OF_DAY) * 60 +
+                                cal.get(Calendar.MINUTE),
+
                     locked = true
                 )
             )
         }
     }
+
 
     /* ---------------- PRESENCE CRUD ---------------- */
 

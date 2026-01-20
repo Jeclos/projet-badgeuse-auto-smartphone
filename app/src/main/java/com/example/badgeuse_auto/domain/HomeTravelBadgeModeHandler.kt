@@ -1,7 +1,6 @@
 package com.example.badgeuse_auto.domain
 
 import com.example.badgeuse_auto.data.*
-import com.example.badgeuse_auto.data.SettingsEntity
 
 class HomeTravelBadgeModeHandler(
     private val presenceDao: PresenceDao,
@@ -27,14 +26,31 @@ class HomeTravelBadgeModeHandler(
         presenceDao.insert(
             PresenceEntity(
                 workLocationId = location.id,
+
                 enterTime = startTime,
-                enterType = "AUTO_HOME_TRAVEL"
+                exitTime = null,
+
+                enterType = "AUTO_HOME_TRAVEL",
+                exitType = null,
+                lastDepotExitTime = null,
+
+                locked = false,
+
+                pendingEnterAt = null,
+                pendingExitAt = null,
+                isPending = false,
+                isExitPending = false,
+
+                timestamp = now,
+                minutesOfDay = ((startTime / 60000) % 1440).toInt(),
+
+                isEnter = true,
+                isExit = false
             )
         )
 
         return "Départ domicile → journée à $startTime"
     }
-
 
     override suspend fun onEnter(
         now: Long,
@@ -47,17 +63,18 @@ class HomeTravelBadgeModeHandler(
         }
 
         val endTime = (now - travelOffsetMs)
-            .coerceAtLeast(current.enterTime) // 🛡️ jamais négatif ni incohérent
+            .coerceAtLeast(current.enterTime) // 🛡️ jamais incohérent
 
         presenceDao.update(
             current.copy(
                 exitTime = endTime,
                 exitType = "AUTO_HOME_TRAVEL",
-                locked = true
+                locked = true,
+                timestamp = now,
+                isExit = true
             )
         )
 
         return "Retour domicile → fin à $endTime"
     }
-
 }
