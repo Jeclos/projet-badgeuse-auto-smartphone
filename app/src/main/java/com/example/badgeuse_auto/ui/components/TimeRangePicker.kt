@@ -43,6 +43,9 @@ private fun TimePickerRow(
     minute: Int,
     onTimeChanged: (hour: Int, minute: Int) -> Unit
 ) {
+    var hourText by remember(hour) { mutableStateOf(hour.toString()) }
+    var minuteText by remember(minute) { mutableStateOf(minute.toString()) }
+
     Column {
         Text(
             text = label,
@@ -53,22 +56,30 @@ private fun TimePickerRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+
             NumberField(
                 label = "Heure",
-                value = hour,
-                range = 0..23
+                value = hourText,
+                range = 0..23,
+                modifier = Modifier.weight(1f)
             ) { newHour ->
-                onTimeChanged(newHour, minute)
+                hourText = newHour
+                newHour.toIntOrNull()?.let {
+                    onTimeChanged(it, minute)
+                }
             }
 
             NumberField(
                 label = "Minute",
-                value = minute,
-                range = 0..59
+                value = minuteText,
+                range = 0..59,
+                modifier = Modifier.weight(1f)
             ) { newMinute ->
-                onTimeChanged(hour, newMinute)
+                minuteText = newMinute
+                newMinute.toIntOrNull()?.let {
+                    onTimeChanged(hour, it)
+                }
             }
-
         }
     }
 }

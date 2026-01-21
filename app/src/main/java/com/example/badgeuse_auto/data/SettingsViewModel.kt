@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 class SettingsViewModel(
     private val repository: SettingsRepository
 ) : ViewModel() {
+    val defaultSettings = SettingsEntity()
 
     val settingsFlow = repository.observeSettings()
 
@@ -39,9 +40,6 @@ class SettingsViewModel(
 
         lunchEnabled: Boolean,
         lunchOutside: Boolean,
-        lunchDurationMin: Int,
-
-        // ➕ AJOUTER CES PARAMÈTRES
         lunchWindowStartHour: Int,
         lunchWindowStartMinute: Int,
         lunchWindowEndHour: Int,
@@ -60,16 +58,14 @@ class SettingsViewModel(
         depotEndHour: Int,
         depotEndMinute: Int,
         depotAdjustMin: Int,
+
         travelTimeMin: Int,
 
-        onDone: () -> Unit = {}
-    )
-{
-        viewModelScope.launch(Dispatchers.IO) {
-            val current = repository.getSettings()
-
+        onSaved: () -> Unit   // ✅ AJOUT
+    ) {
+        viewModelScope.launch {
             repository.saveSettings(
-                current.copy(
+                SettingsEntity(
                     enterDistance = enterDistance,
                     exitDistance = exitDistance,
                     enterDelaySec = enterDelaySec,
@@ -77,9 +73,6 @@ class SettingsViewModel(
 
                     lunchBreakEnabled = lunchEnabled,
                     lunchBreakOutside = lunchOutside,
-                    lunchBreakDurationMin = lunchDurationMin,
-
-                    // ✅ NOUVEAUX CHAMPS
                     lunchWindowStartHour = lunchWindowStartHour,
                     lunchWindowStartMinute = lunchWindowStartMinute,
                     lunchWindowEndHour = lunchWindowEndHour,
@@ -103,10 +96,10 @@ class SettingsViewModel(
                 )
             )
 
-
-            withContext(Dispatchers.Main) { onDone() }
+            onSaved() // ✅ callback UI
         }
     }
+
 
 
     fun setDailyWorkHours(hours: Int) {
