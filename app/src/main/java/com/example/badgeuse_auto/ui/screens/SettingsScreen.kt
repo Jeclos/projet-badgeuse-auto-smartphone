@@ -59,6 +59,16 @@ fun SettingsScreen(
     var lunchOutside by remember { mutableStateOf(true) }
     var lunchDuration by remember { mutableStateOf("") }
 
+
+
+    var lunchStartHour by remember { mutableStateOf("") }
+    var lunchStartMinute by remember { mutableStateOf("") }
+
+    var lunchEndHour by remember { mutableStateOf("") }
+    var lunchEndMinute by remember { mutableStateOf("") }
+    var lunchDurationMin by remember { mutableStateOf("") }
+
+
     var employeeName by remember { mutableStateOf("") }
     var employeeAddress by remember { mutableStateOf("") }
     var employerName by remember { mutableStateOf("") }
@@ -287,8 +297,6 @@ fun SettingsScreen(
                 /* ================= TEMPORISATION ================= */
 
                 SettingsCard(Icons.Default.Schedule, "Temporisation") {
-                    NumberField("Entrée (sec)", enterDelay, range = 0..600) { enterDelay = it }
-                    NumberField("Sortie (sec)", exitDelay, range = 0..600) { exitDelay = it }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Entrée (sec)", Modifier.weight(1f))
@@ -340,33 +348,75 @@ fun SettingsScreen(
 
                 /* ================= PAUSE DÉJEUNER ================= */
 
-                SettingsCard(Icons.Default.LunchDining, "Pause déjeuner") {
+                SettingsCard(Icons.Default.Restaurant, "Pause déjeuner") {
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Activer la pause", Modifier.weight(1f))
-                        Switch(checked = lunchEnabled, onCheckedChange = { lunchEnabled = it })
-                        InfoButton {
-                            helpTitle = "Pause déjeuner"
-                            helpText = BadgeHelp.LUNCH
-                        }
+                        Switch(
+                            checked = lunchEnabled,
+                            onCheckedChange = { lunchEnabled = it }
+                        )
                     }
-
 
                     if (lunchEnabled) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = lunchOutside, onClick = { lunchOutside = true })
-                            Text("À l'extérieur")
-                            Spacer(Modifier.width(16.dp))
-                            RadioButton(selected = !lunchOutside, onClick = { lunchOutside = false })
-                            Text("Sur place")
+
+                        Spacer(Modifier.height(8.dp))
+
+                        /* -------- Plage horaire -------- */
+
+                        Text("Plage horaire théorique", fontWeight = FontWeight.Medium)
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NumberField(
+                                label = "Début (h)",
+                                value = lunchStartHour,
+                                range = 0..23,
+                                modifier = Modifier.weight(1f)
+                            ) { lunchStartHour = it }
+
+                            NumberField(
+                                label = "Début (min)",
+                                value = lunchStartMinute,
+                                range = 0..59,
+                                modifier = Modifier.weight(1f)
+                            ) { lunchStartMinute = it }
                         }
 
-                        NumberField("Durée (min)", lunchDuration, range = 0..180) {
-                            lunchDuration = it
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NumberField(
+                                label = "Fin (h)",
+                                value = lunchEndHour,
+                                range = 0..23,
+                                modifier = Modifier.weight(1f)
+                            ) { lunchEndHour = it }
+
+                            NumberField(
+                                label = "Fin (min)",
+                                value = lunchEndMinute,
+                                range = 0..59,
+                                modifier = Modifier.weight(1f)
+                            ) { lunchEndMinute = it }
                         }
 
+                        Spacer(Modifier.height(8.dp))
+
+                        /* -------- Durée retirée -------- */
+
+                        Text("Temps de pause à retirer", fontWeight = FontWeight.Medium)
+
+                        NumberField(
+                            label = "Durée retirée (min)",
+                            value = lunchDurationMin,
+                            range = 0..180
+                        ) { lunchDurationMin = it }
+
+                        Text(
+                            "Cette durée est automatiquement déduite si une pause est détectée dans la plage horaire.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
+
 
                 /* ================= DÉPÔT ================= */
 
