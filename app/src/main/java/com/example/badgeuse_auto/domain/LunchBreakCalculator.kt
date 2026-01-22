@@ -15,18 +15,24 @@ object LunchBreakCalculator {
 
         if (!settings.lunchEnabled) return 0L
 
+        val pauseMin = settings.lunchDefaultDurationMin.toLong()
+
         val sorted = presences
             .filter { it.exitTime != null }
             .sortedBy { it.enterTime }
 
-        if (sorted.size < 2) return 0L
+        // ⛔ aucune sortie → pause automatique
+        if (sorted.size < 2) {
+            return pauseMin
+        }
 
         val window = computeLunchWindow(
             sorted.first().enterTime,
             settings
         )
 
-        var totalAbsenceMs = 0L
+        var absenceInWindowMs = 0L
+        var absenceOutsideWindowMs = 0L
 
         for (i in 0 until sorted.lastIndex) {
             val current = sorted[i]
@@ -35,20 +41,34 @@ object LunchBreakCalculator {
             val gapStart = current.exitTime!!
             val gapEnd = next.enterTime
 
+            // ⏱ total
+            val gapMs = gapEnd - gapStart
+
+            // 🔲 intersection avec la plage
             val overlapStart = max(gapStart, window.start)
             val overlapEnd = min(gapEnd, window.end)
 
             if (overlapEnd > overlapStart) {
-                totalAbsenceMs += overlapEnd - overlapStart
+                absenceInWindowMs += overlapEnd - overlapStart
+            }
+
+            // ❌ hors plage
+            val outsideMs = gapMs -
+                    max(0L, overlapEnd - overlapStart)
+
+            if (outsideMs > 0) {
+                absenceOutsideWindowMs += outsideMs
             }
         }
 
-        val absenceMinutes = totalAbsenceMs / 60_000
+        val absenceInWindowMin = absenceInWindowMs / 60_000
+        val absenceOutsideWindowMin = absenceOutsideWindowMs / 60_000
 
-        return if (absenceMinutes >= settings.lunchMinDurationMin)
-            settings.lunchDefaultDurationMin.toLong()
-        else
-            0L
+        // 🧠 LOGIQUE MÉTIER
+        val effectiveLunchAbsence =
+            max(pauseMin, absenceInWindowMin.toLong())
+
+        return effectiveLunchAbsence + absenceOutsideWindowMin
     }
 
     private fun computeLunchWindow(

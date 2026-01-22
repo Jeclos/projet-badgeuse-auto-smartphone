@@ -61,11 +61,13 @@ class SettingsViewModel(
 
         travelTimeMin: Int,
 
-        onSaved: () -> Unit   // ✅ AJOUT
+        onSaved: () -> Unit
     ) {
         viewModelScope.launch {
+            val current = repository.getSettings()
+
             repository.saveSettings(
-                SettingsEntity(
+                current.copy(
                     enterDistance = enterDistance,
                     exitDistance = exitDistance,
                     enterDelaySec = enterDelaySec,
@@ -96,9 +98,10 @@ class SettingsViewModel(
                 )
             )
 
-            onSaved() // ✅ callback UI
+            onSaved()
         }
     }
+
 
 
 

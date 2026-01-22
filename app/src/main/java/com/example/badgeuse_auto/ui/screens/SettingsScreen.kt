@@ -152,17 +152,12 @@ fun SettingsScreen(
                             lunchEnabled = lunchEnabled,
                             lunchOutside = lunchOutside,
 
-                            lunchWindowStartHour = settings.lunchWindowStartHour,
-                            lunchWindowStartMinute = settings.lunchWindowStartMinute,
-                            lunchWindowEndHour = settings.lunchWindowEndHour,
-                            lunchWindowEndMinute = settings.lunchWindowEndMinute,
-
-                            // ⬇️ UTILISE LA VALEUR UI
-                            lunchMinDurationMin = lunchDuration.toIntOrNull()
-                                ?: settings.lunchMinDurationMin,
-
-                            lunchDefaultDurationMin = lunchDuration.toIntOrNull()
-                                ?: settings.lunchDefaultDurationMin,
+                            lunchWindowStartHour = lunchStartHour.toIntOrNull() ?: settings.lunchWindowStartHour,
+                            lunchWindowStartMinute = lunchStartMinute.toIntOrNull() ?: settings.lunchWindowStartMinute,
+                            lunchWindowEndHour = lunchEndHour.toIntOrNull() ?: settings.lunchWindowEndHour,
+                            lunchWindowEndMinute = lunchEndMinute.toIntOrNull() ?: settings.lunchWindowEndMinute,
+                            lunchMinDurationMin = lunchDurationMin.toIntOrNull() ?: settings.lunchMinDurationMin,
+                            lunchDefaultDurationMin = lunchDurationMin.toIntOrNull() ?: settings.lunchDefaultDurationMin,
 
                             employeeName = employeeName,
                             employeeAddress = employeeAddress,
