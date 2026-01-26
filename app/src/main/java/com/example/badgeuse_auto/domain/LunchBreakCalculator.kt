@@ -13,7 +13,8 @@ object LunchBreakCalculator {
         settings: SettingsEntity
     ): Long {
 
-        if (!settings.lunchEnabled) return 0L
+        if (!settings.lunchBreakEnabled) return 0L
+
 
         val pauseMin = settings.lunchDefaultDurationMin.toLong()
 
@@ -21,10 +22,28 @@ object LunchBreakCalculator {
             .filter { it.exitTime != null }
             .sortedBy { it.enterTime }
 
-        // ⛔ aucune sortie → pause automatique
+// ⛔ une seule présence : pause UNIQUEMENT si journée complète autour du déjeuner
         if (sorted.size < 2) {
-            return pauseMin
+
+            val window = computeLunchWindow(
+                sorted.first().enterTime,
+                settings
+            )
+
+            val presence = sorted.first()
+            val presenceStart = presence.enterTime
+            val presenceEnd = presence.exitTime ?: presence.enterTime
+
+            // ✅ présent AVANT et APRÈS la plage déjeuner → pause
+            if (presenceStart < window.start && presenceEnd > window.end) {
+                return pauseMin
+            }
+
+            // ❌ demi-journée ou chevauchement partiel → pas de pause
+            return 0L
         }
+
+
 
         val window = computeLunchWindow(
             sorted.first().enterTime,

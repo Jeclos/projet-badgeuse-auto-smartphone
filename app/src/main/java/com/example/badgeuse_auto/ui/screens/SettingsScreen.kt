@@ -57,9 +57,6 @@ fun SettingsScreen(
 
     var lunchEnabled by remember { mutableStateOf(false) }
     var lunchOutside by remember { mutableStateOf(true) }
-    var lunchDuration by remember { mutableStateOf("") }
-
-
 
     var lunchStartHour by remember { mutableStateOf("") }
     var lunchStartMinute by remember { mutableStateOf("") }
@@ -104,10 +101,14 @@ fun SettingsScreen(
         exitDelay = settings.exitDelaySec.toString()
         travelTime = settings.travelTimeMin.toString()
 
-
         lunchEnabled = settings.lunchBreakEnabled
         lunchOutside = settings.lunchBreakOutside
-        lunchDuration = settings.lunchBreakDurationMin.toString()
+
+        lunchStartHour = settings.lunchWindowStartHour.toString()
+        lunchStartMinute = settings.lunchWindowStartMinute.toString()
+        lunchEndHour = settings.lunchWindowEndHour.toString()
+        lunchEndMinute = settings.lunchWindowEndMinute.toString()
+        lunchDurationMin = settings.lunchDefaultDurationMin.toString()
 
         employeeName = settings.employeeName
         employeeAddress = settings.employeeAddress
@@ -121,6 +122,7 @@ fun SettingsScreen(
         depotEndMinute = settings.depotEndMinute.toString()
         depotAdjust = settings.depotDailyAdjustMin.toString()
     }
+
 
     /* ================= SCAFFOLD ================= */
 

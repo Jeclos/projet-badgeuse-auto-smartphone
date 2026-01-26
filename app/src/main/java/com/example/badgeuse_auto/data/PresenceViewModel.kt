@@ -262,27 +262,20 @@ class PresenceViewModel(
                 }
 
                 // calcul pause déjeuner réelle
-                val rawMinutes = presencesOfDay.sumOf {
+                val payableMinutes =
+                    WorkTimeCalculator.computePayableMinutes(
+                        presencesOfDay,
+                        settings
+                    )
+
+                val rawMinutesForDisplay = presencesOfDay.sumOf {
                     val start = it.enterTime
                     val end = it.exitTime ?: it.enterTime
                     ((end - start) / 60_000).coerceAtLeast(0)
                 }
 
-                val lunchDeduction =
-                    LunchBreakCalculator.computeLunchAbsenceMinutes(
-                        presencesOfDay,
-                        settings
-                    )
+                val lunchPause = rawMinutesForDisplay - payableMinutes
 
-
-                val payableMinutes =
-                    (rawMinutes - lunchDeduction)
-                        .coerceAtLeast(0)
-                        .toLong()
-
-
-
-                val lunchPause = rawMinutes - payableMinutes
 
                 if (lunchPause > 0) {
                     parts.add("pause $lunchPause min")

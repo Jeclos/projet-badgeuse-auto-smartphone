@@ -8,44 +8,53 @@ import kotlin.math.min
 object WorkTimeCalculator {
 
     fun computePayableMinutes(
-        presence: PresenceEntity,
+        presencesOfDay: List<PresenceEntity>,
         settings: SettingsEntity
     ): Long {
 
-        val exit = presence.exitTime ?: return 0L
+        val rawMinutes = presencesOfDay.sumOf { presence ->
+            val exit = presence.exitTime ?: return@sumOf 0L
 
-        var start = presence.enterTime
-        var end = exit
+            var start = presence.enterTime
+            var end = exit
 
-        if (settings.badgeMode == BadgeMode.DEPOT) {
+            if (settings.badgeMode == BadgeMode.DEPOT) {
 
-            val dayStart = startOfWorkDay(
-                start,
-                settings.depotStartHour,
-                settings.depotStartMinute
-            )
+                val dayStart = startOfWorkDay(
+                    start,
+                    settings.depotStartHour,
+                    settings.depotStartMinute
+                )
 
-            val minStart = buildOfficialTime(
-                dayStart,
-                settings.depotStartHour,
-                settings.depotStartMinute
-            )
+                val minStart = buildOfficialTime(
+                    dayStart,
+                    settings.depotStartHour,
+                    settings.depotStartMinute
+                )
 
-            val maxEnd = buildOfficialTime(
-                dayStart,
-                settings.depotEndHour,
-                settings.depotEndMinute
-            )
+                val maxEnd = buildOfficialTime(
+                    dayStart,
+                    settings.depotEndHour,
+                    settings.depotEndMinute
+                )
 
-            start = max(start, minStart)
-            end = min(end, maxEnd)
-        }
+                start = max(start, minStart)
+                end = min(end, maxEnd)
+            }
 
-        val rawMinutes =
             ((end - start) / 60_000).coerceAtLeast(0)
-
-        return rawMinutes + settings.depotDailyAdjustMin
-
+        }
+        val lunchDeduction =
+            if (settings.lunchBreakEnabled) {
+                LunchBreakCalculator.computeLunchAbsenceMinutes(
+                    presencesOfDay,
+                    settings
+                )
+            } else {
+                0L
+            }
+        return (rawMinutes - lunchDeduction + settings.depotDailyAdjustMin)
+            .coerceAtLeast(0)
 
     }
 
