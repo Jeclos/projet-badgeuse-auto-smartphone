@@ -15,43 +15,31 @@ object LunchBreakCalculator {
 
         if (!settings.lunchBreakEnabled) return 0L
 
-
         val pauseMin = settings.lunchDefaultDurationMin.toLong()
 
         val sorted = presences
             .filter { it.exitTime != null }
             .sortedBy { it.enterTime }
 
-// ⛔ une seule présence : pause UNIQUEMENT si journée complète autour du déjeuner
-        if (sorted.size < 2) {
-
-            val window = computeLunchWindow(
-                sorted.first().enterTime,
-                settings
-            )
-
-            val presence = sorted.first()
-            val presenceStart = presence.enterTime
-            val presenceEnd = presence.exitTime ?: presence.enterTime
-
-            // ✅ présent AVANT et APRÈS la plage déjeuner → pause
-            if (presenceStart < window.start && presenceEnd > window.end) {
-                return pauseMin
-            }
-
-            // ❌ demi-journée ou chevauchement partiel → pas de pause
-            return 0L
-        }
-
-
+        if (sorted.isEmpty()) return 0L
 
         val window = computeLunchWindow(
             sorted.first().enterTime,
             settings
         )
 
+        // 🧠 Détection journée complète (avant ET après le déjeuner)
+        val dayStart = sorted.first().enterTime
+        val dayEnd = sorted.last().exitTime!!
+
+        val isFullDay =
+            dayStart < window.start && dayEnd > window.end
+
+        // ❌ Demi-journée → pas de pause déjeuner
+        if (!isFullDay) return 0L
+
+        // ⏱ Calcul de l’absence DANS la plage déjeuner
         var absenceInWindowMs = 0L
-        var absenceOutsideWindowMs = 0L
 
         for (i in 0 until sorted.lastIndex) {
             val current = sorted[i]
@@ -60,34 +48,18 @@ object LunchBreakCalculator {
             val gapStart = current.exitTime!!
             val gapEnd = next.enterTime
 
-            // ⏱ total
-            val gapMs = gapEnd - gapStart
-
-            // 🔲 intersection avec la plage
             val overlapStart = max(gapStart, window.start)
             val overlapEnd = min(gapEnd, window.end)
 
             if (overlapEnd > overlapStart) {
                 absenceInWindowMs += overlapEnd - overlapStart
             }
-
-            // ❌ hors plage
-            val outsideMs = gapMs -
-                    max(0L, overlapEnd - overlapStart)
-
-            if (outsideMs > 0) {
-                absenceOutsideWindowMs += outsideMs
-            }
         }
 
         val absenceInWindowMin = absenceInWindowMs / 60_000
-        val absenceOutsideWindowMin = absenceOutsideWindowMs / 60_000
 
-        // 🧠 LOGIQUE MÉTIER
-        val effectiveLunchAbsence =
-            max(pauseMin, absenceInWindowMin.toLong())
-
-        return effectiveLunchAbsence + absenceOutsideWindowMin
+        // 🧠 LOGIQUE QUOTA (FIN DU DOUBLE RETRAIT)
+        return max(pauseMin - absenceInWindowMin, 0L)
     }
 
     private fun computeLunchWindow(
