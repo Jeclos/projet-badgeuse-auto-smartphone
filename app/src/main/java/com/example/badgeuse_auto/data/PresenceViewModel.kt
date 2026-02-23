@@ -235,7 +235,9 @@ class PresenceViewModel(
                     WorkTimeCalculator.startOfWorkDay(
                         presence.enterTime,
                         settings.depotStartHour,
-                        settings.depotStartMinute
+                        settings.depotStartMinute,
+                        settings.depotEndHour,
+                        settings.depotEndMinute
                     )
 
                 val presenceStart = presence.enterTime

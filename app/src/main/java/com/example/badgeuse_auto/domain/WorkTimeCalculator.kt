@@ -21,9 +21,11 @@ object WorkTimeCalculator {
             if (settings.badgeMode == BadgeMode.DEPOT) {
 
                 val dayStart = startOfWorkDay(
-                    start,
-                    settings.depotStartHour,
-                    settings.depotStartMinute
+                    time = start,
+                    startHour = settings.depotStartHour,
+                    startMinute = settings.depotStartMinute,
+                    endHour = settings.depotEndHour,
+                    endMinute = settings.depotEndMinute
                 )
 
                 val minStart = buildOfficialTime(
@@ -76,8 +78,11 @@ object WorkTimeCalculator {
     fun startOfWorkDay(
         time: Long,
         startHour: Int,
-        startMinute: Int
+        startMinute: Int,
+        endHour: Int,
+        endMinute: Int
     ): Long {
+
         val cal = Calendar.getInstance().apply {
             timeInMillis = time
             set(Calendar.HOUR_OF_DAY, startHour)
@@ -86,8 +91,13 @@ object WorkTimeCalculator {
             set(Calendar.MILLISECOND, 0)
         }
 
-        // Si le badge est AVANT l'heure de début → jour précédent
-        if (time < cal.timeInMillis) {
+        // 🧠 Horaire de nuit si le début est APRÈS la fin
+        val isNightShift =
+            startHour > endHour ||
+                    (startHour == endHour && startMinute > endMinute)
+
+        // ⛔ retour veille UNIQUEMENT pour les nuits
+        if (isNightShift && time < cal.timeInMillis) {
             cal.add(Calendar.DAY_OF_MONTH, -1)
         }
 
